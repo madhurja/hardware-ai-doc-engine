@@ -35,22 +35,68 @@ class PDFExporter:
     def _export_reportlab_pdf(self, title: str, markdown_content: str, output: Path) -> None:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import Image, ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         styles = getSampleStyleSheet()
+        styles["Title"].fontSize = 22
+        styles["Title"].leading = 27
+        styles["Title"].textColor = colors.HexColor("#0f172a")
+        styles["Heading1"].fontSize = 15
+        styles["Heading1"].leading = 19
+        styles["Heading1"].spaceBefore = 12
+        styles["Heading1"].spaceAfter = 7
+        styles["Heading1"].textColor = colors.HexColor("#0f172a")
+        styles["Heading2"].fontSize = 13
+        styles["Heading2"].leading = 16
+        styles["Heading2"].spaceBefore = 10
+        styles["Heading2"].spaceAfter = 6
+        styles["Heading2"].textColor = colors.HexColor("#0f172a")
+        styles["Heading3"].fontSize = 11
+        styles["Heading3"].leading = 14
+        styles["Heading3"].spaceBefore = 7
+        styles["Heading3"].spaceAfter = 4
+        styles["Heading3"].textColor = colors.HexColor("#0f172a")
+        styles["BodyText"].fontSize = 9.2
+        styles["BodyText"].leading = 12.2
+        styles["BodyText"].spaceAfter = 4
+        styles["BodyText"].wordWrap = "CJK"
+
+        table_cell_style = ParagraphStyle(
+            "TableCell",
+            parent=styles["BodyText"],
+            fontSize=7.2,
+            leading=9,
+            wordWrap="CJK",
+            splitLongWords=1,
+        )
+        table_header_style = ParagraphStyle(
+            "TableHeader",
+            parent=table_cell_style,
+            fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#0f172a"),
+        )
         doc = SimpleDocTemplate(
             str(output),
             pagesize=A4,
-            rightMargin=15 * mm,
-            leftMargin=15 * mm,
-            topMargin=20 * mm,
+            rightMargin=12 * mm,
+            leftMargin=12 * mm,
+            topMargin=18 * mm,
             bottomMargin=18 * mm,
             title=title,
         )
 
-        story = [Paragraph(title, styles["Title"]), Paragraph("Automated Engineering Delivery", styles["Normal"]), Spacer(1, 8 * mm)]
+        story = [
+            Paragraph(title, styles["Title"]),
+            Paragraph("Automated Engineering Delivery", styles["Normal"]),
+            Spacer(1, 4 * mm),
+        ]
+        hero_path = Path("static/assets/hardware-workbench.jpg")
+        if hero_path.exists():
+            story.append(Image(str(hero_path), width=174 * mm, height=58 * mm, kind="proportional"))
+            story.append(Spacer(1, 6 * mm))
         pending_bullets: list[str] = []
         pending_table: list[list[str]] = []
 
@@ -66,15 +112,23 @@ class PDFExporter:
 
         def flush_table() -> None:
             if pending_table:
-                table = Table(pending_table, repeatRows=1)
+                normalized_table = self._normalize_table(pending_table)
+                col_widths = self._column_widths(normalized_table[0], len(normalized_table[0]), doc.width)
+                table_data = []
+                for row_index, row in enumerate(normalized_table):
+                    style = table_header_style if row_index == 0 else table_cell_style
+                    table_data.append([Paragraph(self._escape_pdf_text(cell), style) for cell in row])
+                table = Table(table_data, colWidths=col_widths, repeatRows=1, splitByRow=1, hAlign="LEFT")
                 table.setStyle(
                     TableStyle(
                         [
                             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-                            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
                             ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                            ("TOPPADDING", (0, 0), (-1, -1), 4),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                         ]
                     )
                 )
@@ -136,6 +190,40 @@ class PDFExporter:
     @staticmethod
     def _is_markdown_table_line(line: str) -> bool:
         return line.startswith("|") and line.endswith("|") and line.count("|") >= 2
+
+    @staticmethod
+    def _escape_pdf_text(text: str) -> str:
+        escaped = html.escape(str(text).strip())
+        return escaped.replace("\n", "<br/>")
+
+    @staticmethod
+    def _normalize_table(rows: list[list[str]]) -> list[list[str]]:
+        column_count = max(len(row) for row in rows)
+        return [row + [""] * (column_count - len(row)) for row in rows]
+
+    @staticmethod
+    def _column_widths(header: list[str], column_count: int, available_width: float) -> list[float]:
+        header_text = " ".join(header).lower()
+        if column_count == 2:
+            weights = [0.28, 0.72]
+        elif column_count == 3 and "step" in header_text and "acceptance" in header_text:
+            weights = [0.09, 0.51, 0.40]
+        elif column_count == 3 and "why it matters" in header_text:
+            weights = [0.15, 0.22, 0.63]
+        elif column_count == 3 and "operator notes" in header_text:
+            weights = [0.17, 0.41, 0.42]
+        elif column_count == 3 and "manual interpretation" in header_text:
+            weights = [0.16, 0.25, 0.59]
+        elif column_count == 3:
+            weights = [0.22, 0.28, 0.50]
+        elif column_count == 4:
+            weights = [0.18, 0.24, 0.29, 0.29]
+        elif column_count == 5:
+            weights = [0.15, 0.20, 0.20, 0.22, 0.23]
+        else:
+            weights = [1 / column_count] * column_count
+        total = sum(weights)
+        return [(weight / total) * available_width for weight in weights]
 
     def export_html(self, title: str, markdown_content: str, output_path: str | Path) -> Path:
         output = Path(output_path)

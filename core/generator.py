@@ -244,6 +244,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.append(f"- Total schematic pages reviewed: {analysis['page_count']}")
         sections.append(f"- Major detected subsystems: {', '.join(group['name'] for group in analysis['interface_groups'][:12]) or 'not detected'}")
         sections.append(f"- Power rails detected: {', '.join(rail['net'] for rail in analysis['power_rails'][:12]) or 'not detected'}")
+        sections.append("### How This Manual Is Organized")
+        sections.append("- System overview explains what the board appears to contain based on detected schematic evidence.")
+        sections.append("- Functional block guide explains each major block, what it is used for, how it works, how to use it, and how to verify it.")
+        sections.append("- Power and bring-up sections define the safest order for first operation.")
+        sections.append("- Troubleshooting and maintenance sections convert the schematic analysis into practical service actions.")
 
         if analysis["interface_groups"]:
             sections.append("### Functional Block Summary")
@@ -254,6 +259,18 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 sections.append(
                     f"| {group.get('name', 'Unknown')} | {evidence} | {cls._manual_note_for_group(group.get('name', 'Unknown'))} |"
                 )
+
+        if analysis["interface_groups"]:
+            sections.append("## Professional Functional Block Guide")
+            for group in analysis["interface_groups"][:14]:
+                name = group.get("name", "Unknown")
+                profile = cls._block_profile_for_group(name)
+                sections.append(f"### {name}")
+                sections.append(f"- Description: {profile['description']}")
+                sections.append(f"- Primary use: {profile['use']}")
+                sections.append(f"- How it works: {profile['how_it_works']}")
+                sections.append(f"- How to use it: {profile['how_to_use']}")
+                sections.append(f"- Verification method: {profile['verification']}")
 
         if analysis["power_rails"]:
             sections.append("## Power Input, Rail Checks, And Bring-Up")
@@ -300,7 +317,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     f"| {name} | {cls._operator_note_for_group(name)} | {cls._validation_note_for_group(name)} |"
                 )
 
-        sections.append("## Detailed Subsystem Notes")
+        sections.append("## Subsystem Service Notes")
         for group in analysis["interface_groups"][:12]:
             name = group.get("name", "Unknown")
             sections.append(f"### {name}")
@@ -403,6 +420,98 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "Protection/ESD": "Protection devices around external connectors and field wiring.",
         }
         return notes.get(name, "Detected functional block requiring schematic-to-hardware confirmation.")
+
+    @staticmethod
+    def _block_profile_for_group(name: str) -> dict[str, str]:
+        profiles = {
+            "Power": {
+                "description": "Power entry and distribution section feeding the logic, modem, interface, fan, and auxiliary rails.",
+                "use": "Provides stable voltage domains for the board and defines the order in which peripherals can be safely enabled.",
+                "how_it_works": "Input power is distributed through rails, regulators, switches, protection devices, and decoupling networks before reaching each subsystem.",
+                "how_to_use": "Begin with a current-limited supply, verify unloaded rails, then attach peripherals one block at a time.",
+                "verification": "Measure each rail for voltage, ripple, ramp behavior, current draw, and temperature under staged load.",
+            },
+            "Ethernet": {
+                "description": "Wired network interface including differential pairs, magnetics/RJ45 path, LEDs, and shield-related signals.",
+                "use": "Connects the board to a LAN for network communication, configuration, diagnostics, or data transfer.",
+                "how_it_works": "Transmit and receive pairs route through controlled differential paths and magnetics before reaching the external connector.",
+                "how_to_use": "Use a known-good Ethernet cable and switch after confirming pair continuity and shield policy.",
+                "verification": "Check link negotiation, LEDs, packet transfer, pair mapping, and connector shield continuity.",
+            },
+            "USB": {
+                "description": "USB host/device connectivity, hub routing, downstream ports, VBUS distribution, and ESD protection.",
+                "use": "Supports USB peripherals, modem data paths, service tools, storage, or firmware/debug workflows.",
+                "how_it_works": "Differential data pairs and VBUS pass through switching, hub, and protection circuitry before reaching connectors or modules.",
+                "how_to_use": "Attach one USB device at a time during bring-up and avoid exceeding the validated VBUS current budget.",
+                "verification": "Confirm VBUS voltage, D+/D- continuity, hub reset, enumeration, and current-limit behavior.",
+            },
+            "HDMI": {
+                "description": "Display output section with high-speed lanes, hotplug detect, DDC, CEC, and HDMI 5 V support.",
+                "use": "Drives an external monitor for UI, commissioning, diagnostics, or product display output.",
+                "how_it_works": "High-speed TMDS pairs carry video while DDC and hotplug lines coordinate display detection and configuration.",
+                "how_to_use": "Use a short known-good cable and connect the display after base rails are stable.",
+                "verification": "Check HDMI 5 V, hotplug, DDC SCL/SDA, CEC continuity, and stable display detection.",
+            },
+            "Wireless/SIM": {
+                "description": "Cellular/GNSS or wireless modem area with SIM card, enable/reset pins, status LEDs, UART/USB paths, and modem power.",
+                "use": "Provides cellular data, GNSS location, network telemetry, remote monitoring, or field connectivity.",
+                "how_it_works": "The host controls modem power/reset/enable lines while SIM, USB/UART, and antenna paths support network registration and data transfer.",
+                "how_to_use": "Install approved antenna and SIM hardware, verify modem supply, then test registration using the intended firmware.",
+                "verification": "Check modem rails, SIM voltage, SIM clock/data/reset, UART/USB communication, status LEDs, and RF certification evidence.",
+            },
+            "RS485": {
+                "description": "Industrial differential serial bus with transceiver, A/B lines, termination, surge/ESD protection, and direction control.",
+                "use": "Connects to field devices, meters, controllers, sensors, or industrial communication networks.",
+                "how_it_works": "The transceiver converts logic TX/RX into differential A/B signaling while termination and protection handle cable behavior.",
+                "how_to_use": "Confirm A/B polarity, cable shield/grounding policy, and termination before connecting field wiring.",
+                "verification": "Perform idle bias, termination, loopback, DE/RE timing, surge-protection, and cable communication tests.",
+            },
+            "GPIO Header": {
+                "description": "Expansion header exposing logic-level signals and board control lines.",
+                "use": "Supports sensors, indicators, debug wiring, low-speed controls, or customer expansion hardware.",
+                "how_it_works": "Header pins connect host GPIO or bus signals to external circuits with voltage and direction constraints.",
+                "how_to_use": "Treat every pin as engineering-only until voltage, direction, pull state, and firmware mapping are confirmed.",
+                "verification": "Measure idle voltage, confirm pull-ups/pull-downs, check firmware mapping, and test one signal at a time.",
+            },
+            "RTC": {
+                "description": "Real-time clock section with oscillator, backup battery path, I2C control, and optional interrupt.",
+                "use": "Maintains time across power cycles and supports scheduled wake, logs, or timestamped events.",
+                "how_it_works": "A low-power clock IC uses a crystal and backup source to preserve time when main power is removed.",
+                "how_to_use": "Install the approved backup cell, initialize time over I2C, and validate retention after power removal.",
+                "verification": "Check oscillator start, I2C address, backup voltage, retention time, and interrupt behavior.",
+            },
+            "Fan": {
+                "description": "Thermal management interface with fan supply, tachometer, PWM/control, and controller or header pins.",
+                "use": "Controls airflow for thermal stability in an enclosure or high-load operating mode.",
+                "how_it_works": "The controller or host drives fan power/control and reads tach or alert feedback for fault detection.",
+                "how_to_use": "Use a fan within the validated voltage/current rating and confirm direction before enclosure operation.",
+                "verification": "Measure fan voltage/current, tach signal, speed response, stalled fan behavior, and alarm reporting.",
+            },
+            "PCIe": {
+                "description": "High-speed expansion interface with clock, reset, transmit, receive, and request/control signals.",
+                "use": "Supports high-speed expansion cards, modems, storage, or specialized peripheral modules.",
+                "how_it_works": "Differential TX/RX lanes and reference clock lines provide high-speed communication under strict routing constraints.",
+                "how_to_use": "Attach only compatible PCIe hardware after power and reset timing are validated.",
+                "verification": "Check reset timing, reference clock, lane continuity, impedance review, and host enumeration.",
+            },
+            "Protection/ESD": {
+                "description": "Protection network around external connectors and field wiring.",
+                "use": "Reduces risk from ESD, surge, cable faults, and transient events during handling or installation.",
+                "how_it_works": "TVS/ESD devices clamp transient voltages and route fault energy away from sensitive IC pins.",
+                "how_to_use": "Do not bypass protection devices; connect external cables only after grounding and shield strategy are confirmed.",
+                "verification": "Review diode orientation, continuity, leakage, connector location, and pre-compliance surge/ESD evidence.",
+            },
+        }
+        return profiles.get(
+            name,
+            {
+                "description": "Detected schematic block that requires hardware-specific confirmation.",
+                "use": "Supports a board function inferred from signal names and component evidence.",
+                "how_it_works": "Signals and support components route between the host, connectors, protection devices, and peripheral circuitry.",
+                "how_to_use": "Use only after voltage level, direction, connector role, and firmware behavior are confirmed.",
+                "verification": "Perform continuity, voltage, functional smoke, and documentation traceability checks.",
+            },
+        )
 
     @staticmethod
     def _operator_note_for_group(name: str) -> str:

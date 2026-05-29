@@ -112,8 +112,11 @@ class EngineTests(unittest.TestCase):
             )
 
             self.assertIn("Detailed System Overview", draft)
+            self.assertIn("Professional Functional Block Guide", draft)
+            self.assertIn("How it works", draft)
             self.assertIn("Power Input, Rail Checks, And Bring-Up", draft)
             self.assertIn("Interface Operation Guide", draft)
+            self.assertIn("Subsystem Service Notes", draft)
             self.assertIn("Troubleshooting Matrix", draft)
             self.assertIn("SIMCOM1", draft)
 
