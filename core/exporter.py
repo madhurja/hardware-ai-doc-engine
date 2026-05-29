@@ -104,6 +104,9 @@ class PDFExporter:
             elif line.startswith("### "):
                 flush_bullets()
                 story.append(Paragraph(line[4:], styles["Heading3"]))
+            elif line.startswith("#### "):
+                flush_bullets()
+                story.append(Paragraph(line[5:], styles["Heading3"]))
             elif line.startswith("- "):
                 pending_bullets.append(line[2:])
             else:

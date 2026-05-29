@@ -92,10 +92,14 @@ class DocGenerationEngine:
             for item in profile.peripherals
         ) or "| No peripherals detected | Not provided | Not provided |"
 
+        schematic_sections = self._format_manifest_sections(profile.schematics, "Schematic")
+        pcb_sections = self._format_manifest_sections(profile.pcb, "PCB")
+        guidance = self._document_type_guidance(document_type)
+
         return f"""# {document_type.replace('_', ' ').title()}
 
 ## Scope
-This local draft was generated without an OpenAI API key. It verifies the parsing and PDF pipeline while preserving strict technical bounds.
+This local draft was generated from the supplied hardware evidence. It preserves strict technical bounds and marks anything not present in the source files as evidence required.
 
 ## Hardware Profile Summary
 - Code files scanned: {profile.metadata.get('code_files_scanned', 0)}
@@ -114,8 +118,85 @@ This local draft was generated without an OpenAI API key. It verifies the parsin
 | --- | --- | --- |
 {peripheral_rows}
 
+{schematic_sections}
+
+{pcb_sections}
+
+## Documentation Guidance
+{guidance}
+
 ## Evidence Required
 - Add verified electrical limits before customer delivery.
 - Add board revision, firmware version, and validation date.
 - Review generated output manually before sending to a client.
 """
+
+    @staticmethod
+    def _format_manifest_sections(manifests: list[dict[str, Any]], label: str) -> str:
+        if not manifests:
+            return f"## {label} Evidence\nNo {label.lower()} manifest data detected."
+
+        sections: list[str] = [f"## {label} Evidence"]
+        for manifest in manifests:
+            source = manifest.get("source_file", "not provided")
+            page_count = manifest.get("page_count")
+            sections.append(f"### Source: {source}")
+            if page_count:
+                sections.append(f"- PDF pages scanned: {page_count}")
+
+            dates = manifest.get("document_dates") or {}
+            if dates:
+                sections.append(f"- Created: {dates.get('created', 'not provided')}")
+                sections.append(f"- Updated: {dates.get('updated', 'not provided')}")
+
+            nets = manifest.get("detected_nets") or []
+            if nets:
+                sections.append("#### Detected Nets")
+                sections.append(", ".join(nets[:40]))
+
+            components = manifest.get("detected_components") or []
+            if components:
+                sections.append("#### Component Snapshot")
+                sections.append("| Reference | Value / Part |")
+                sections.append("| --- | --- |")
+                for component in components[:35]:
+                    sections.append(
+                        f"| {component.get('reference', 'unknown')} | {component.get('value_or_part', 'not provided')} |"
+                    )
+
+            pages = manifest.get("pages") or []
+            if pages:
+                sections.append("#### Page Index")
+                sections.append("| Page | Inferred Title | Extracted Evidence |")
+                sections.append("| --- | --- | --- |")
+                for page in pages[:12]:
+                    excerpt = str(page.get("text_excerpt", "")).replace("|", "/")[:180]
+                    sections.append(f"| {page.get('page')} | {page.get('title', 'Untitled')} | {excerpt} |")
+
+        return "\n".join(sections)
+
+    @staticmethod
+    def _document_type_guidance(document_type: str) -> str:
+        guidance = {
+            "user_manual": (
+                "- Treat the board as a hardware control/evaluation assembly until product usage context is confirmed.\n"
+                "- Document power input, regulator outputs, indicator LEDs, feedback inputs, and MCU-related rails as observed.\n"
+                "- Do not publish operating procedures until connector functions and firmware behavior are confirmed."
+            ),
+            "test_report": (
+                "- Verify every named rail at power-up before attaching external loads.\n"
+                "- Validate LED indicators, feedback paths, protection diodes, connectors, and regulator power-good behavior.\n"
+                "- Record measured voltages, ripple, thermal state, and pass/fail evidence per board revision."
+            ),
+            "compliance_brief": (
+                "- Treat CE/FCC/RoHS status as not certified unless formal lab evidence is supplied.\n"
+                "- Use the schematic evidence to prepare pre-compliance checks for input protection, emissions risks, and restricted materials.\n"
+                "- Confirm automotive or industrial rating claims from component datasheets before customer release."
+            ),
+            "bom": (
+                "- Use the component snapshot as a draft BOM seed only.\n"
+                "- Reconcile every reference designator against the native CAD BOM export before procurement.\n"
+                "- Confirm manufacturer part numbers, tolerances, packages, and lifecycle status."
+            ),
+        }
+        return guidance.get(document_type, "- Review source evidence and confirm missing engineering values before release.")

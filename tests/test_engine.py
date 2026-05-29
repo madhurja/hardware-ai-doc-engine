@@ -76,6 +76,16 @@ class EngineTests(unittest.TestCase):
             self.assertIn("User Manual", draft)
             self.assertIn("LED", draft)
 
+    def test_parser_extracts_schematic_tokens_from_text(self) -> None:
+        text = "U156 LM5164QDDARQ1 GND VIN +12V 3V3 MCU_HV_FB1 R192 10K C133 2.2uF"
+
+        components = HardwareManifestParser._extract_component_tokens(text)
+        nets = HardwareManifestParser._extract_net_tokens(text)
+
+        self.assertIn({"reference": "U156", "value_or_part": "LM5164QDDARQ1"}, components)
+        self.assertIn("MCU_HV_FB1", nets)
+        self.assertIn("+12V", nets)
+
 
 if __name__ == "__main__":
     unittest.main()

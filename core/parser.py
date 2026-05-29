@@ -33,7 +33,7 @@ class HardwareManifestParser:
     """Builds a structured hardware profile from local firmware and manifests."""
 
     CODE_EXTENSIONS = {".c", ".h", ".cpp", ".ino"}
-    MANIFEST_EXTENSIONS = {".csv", ".tsv", ".json", ".xml", ".net"}
+    MANIFEST_EXTENSIONS = {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"}
 
     PIN_PATTERN = re.compile(r"#define\s+(\w+)\s+(GPIO_PIN_\d+|PA_\d+|PB_\d+|\d+)")
     SERIAL_PATTERN = re.compile(r"\bSerial(?:\d*)\.begin\((\d+)\)")
@@ -137,6 +137,8 @@ class HardwareManifestParser:
                     manifests.extend(self._read_table_manifest(path))
                 elif path.suffix.lower() == ".json":
                     manifests.append({"source_file": str(path), "data": json.loads(path.read_text(encoding="utf-8"))})
+                elif path.suffix.lower() == ".pdf":
+                    manifests.append(self._read_pdf_manifest(path))
                 else:
                     manifests.append(self._read_xml_like_manifest(path))
             except (OSError, json.JSONDecodeError, ET.ParseError, UnicodeDecodeError) as exc:
@@ -160,6 +162,100 @@ class HardwareManifestParser:
             if attributes:
                 components.append({"tag": self._strip_namespace(element.tag), "attributes": attributes})
         return {"source_file": str(path), "components": components[:250]}
+
+    def _read_pdf_manifest(self, path: Path) -> dict[str, Any]:
+        try:
+            import pypdf
+        except ImportError as exc:
+            raise RuntimeError("PDF ingestion requires pypdf. Install project requirements first.") from exc
+
+        reader = pypdf.PdfReader(str(path))
+        pages: list[dict[str, Any]] = []
+        all_text: list[str] = []
+        for index, page in enumerate(reader.pages, 1):
+            text = page.extract_text() or ""
+            all_text.append(text)
+            pages.append(
+                {
+                    "page": index,
+                    "title": self._infer_page_title(text, index),
+                    "text_excerpt": self._compact_text(text, 1200),
+                }
+            )
+
+        combined_text = "\n".join(all_text)
+        return {
+            "source_file": str(path),
+            "page_count": len(reader.pages),
+            "pages": pages,
+            "detected_components": self._extract_component_tokens(combined_text),
+            "detected_nets": self._extract_net_tokens(combined_text),
+            "document_dates": self._extract_document_dates(combined_text),
+        }
+
+    @staticmethod
+    def _infer_page_title(text: str, index: int) -> str:
+        match = re.search(r"Page\s+\d+[_\s-]+([A-Za-z0-9_+/\-\s]+)", text)
+        if match:
+            return match.group(1).strip()[:80]
+        board_match = re.search(r"Board\s+([A-Za-z0-9_+/\-\s]+)", text)
+        if board_match:
+            return board_match.group(1).strip()[:80]
+        return f"Page {index}"
+
+    @staticmethod
+    def _extract_component_tokens(text: str) -> list[dict[str, str]]:
+        token_pattern = re.compile(r"\b([URCLDQJPST][A-Z]?\d{1,4})\b")
+        value_pattern = re.compile(
+            r"\b(\d+(?:\.\d+)?\s?(?:uF|nF|pF|K|k|R|ohm|uH|V|A)|[A-Z0-9-]{4,})\b",
+            re.IGNORECASE,
+        )
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        components: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for idx, line in enumerate(lines):
+            for match in token_pattern.finditer(line):
+                token = match.group(1)
+                if token in seen:
+                    continue
+                context = (line[match.end() :] + " " + " ".join(lines[idx + 1 : idx + 3])).strip()
+                value_match = value_pattern.search(context)
+                components.append(
+                    {
+                        "reference": token,
+                        "value_or_part": value_match.group(1) if value_match else "not provided",
+                    }
+                )
+                seen.add(token)
+        return components[:300]
+
+    @staticmethod
+    def _extract_net_tokens(text: str) -> list[str]:
+        net_pattern = re.compile(
+            r"(?<![A-Za-z0-9_+])(?:GND|VIN|VBAT|VDC_IN|\+?\d+(?:V|V\d)|\dV\d|[A-Z][A-Z0-9_]*(?:_[A-Z0-9]+)+)(?![A-Za-z0-9_])"
+        )
+        priority = []
+        seen: set[str] = set()
+        for match in net_pattern.finditer(text):
+            net = match.group(0)
+            if net not in seen:
+                priority.append(net)
+                seen.add(net)
+        return priority[:200]
+
+    @staticmethod
+    def _extract_document_dates(text: str) -> dict[str, str]:
+        created = re.search(r"Create at\s+(\d{4}-\d{2}-\d{2})", text)
+        updated = re.search(r"Update at\s+(\d{4}-\d{2}-\d{2})", text)
+        return {
+            "created": created.group(1) if created else "not provided",
+            "updated": updated.group(1) if updated else "not provided",
+        }
+
+    @staticmethod
+    def _compact_text(text: str, limit: int) -> str:
+        compacted = re.sub(r"\s+", " ", text).strip()
+        return compacted[:limit]
 
     def _list_files(self, directory: Path, extensions: set[str]) -> list[Path]:
         if not directory.exists():
