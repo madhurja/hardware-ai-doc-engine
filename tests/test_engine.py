@@ -76,6 +76,47 @@ class EngineTests(unittest.TestCase):
             self.assertIn("User Manual", draft)
             self.assertIn("LED", draft)
 
+    def test_user_manual_includes_detailed_operator_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            prompts = Path(temp_dir) / "prompts.json"
+            prompts.write_text(json.dumps({"user_manual": "Prompt"}), encoding="utf-8")
+            engine = DocGenerationEngine(prompts_path=prompts, api_key="")
+
+            draft = engine.generate_document(
+                "user_manual",
+                {
+                    "detected_pins": [],
+                    "peripherals": [],
+                    "schematics": [
+                        {
+                            "source_file": "cm4.pdf",
+                            "page_count": 1,
+                            "analysis": {
+                                "power_rails": [
+                                    {"net": "CM4_5V", "role": "5 V input/distribution rail"},
+                                    {"net": "VBAT", "role": "Battery or modem supply"},
+                                ],
+                                "interface_groups": [
+                                    {"name": "USB", "evidence": ["USB"], "confidence": 80},
+                                    {"name": "Wireless/SIM", "evidence": ["SIM"], "confidence": 80},
+                                ],
+                                "key_parts": [{"reference": "SIMCOM1", "value_or_part": "SIM-M2"}],
+                                "test_focus": ["SIM/LTE modem power, UART, USB, reset, and enable-line verification"],
+                                "risk_flags": ["Wireless/SIM section requires RF evidence before release."],
+                            },
+                        }
+                    ],
+                    "pcb": [],
+                    "metadata": {"schematic_files_scanned": 1},
+                },
+            )
+
+            self.assertIn("Detailed System Overview", draft)
+            self.assertIn("Power Input, Rail Checks, And Bring-Up", draft)
+            self.assertIn("Interface Operation Guide", draft)
+            self.assertIn("Troubleshooting Matrix", draft)
+            self.assertIn("SIMCOM1", draft)
+
     def test_parser_extracts_schematic_tokens_from_text(self) -> None:
         text = "U156 LM5164QDDARQ1 GND VIN +12V 3V3 MCU_HV_FB1 R192 10K C133 2.2uF SIMCOM1 SIM-M2"
 
