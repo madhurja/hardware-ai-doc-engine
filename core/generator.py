@@ -149,17 +149,21 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 sections.append(f"- Created: {dates.get('created', 'not provided')}")
                 sections.append(f"- Updated: {dates.get('updated', 'not provided')}")
 
+            analysis = manifest.get("analysis") or {}
+            if analysis:
+                sections.extend(DocGenerationEngine._format_analysis(analysis))
+
             nets = manifest.get("detected_nets") or []
             if nets:
                 sections.append("#### Detected Nets")
-                sections.append(", ".join(nets[:40]))
+                sections.append(", ".join(nets[:55]))
 
             components = manifest.get("detected_components") or []
             if components:
                 sections.append("#### Component Snapshot")
                 sections.append("| Reference | Value / Part |")
                 sections.append("| --- | --- |")
-                for component in components[:35]:
+                for component in components[:28]:
                     sections.append(
                         f"| {component.get('reference', 'unknown')} | {component.get('value_or_part', 'not provided')} |"
                     )
@@ -176,27 +180,76 @@ This local draft was generated from the supplied hardware evidence. It preserves
         return "\n".join(sections)
 
     @staticmethod
+    def _format_analysis(analysis: dict[str, Any]) -> list[str]:
+        sections: list[str] = []
+
+        power_rails = analysis.get("power_rails") or []
+        if power_rails:
+            sections.append("#### Power Rail Map")
+            sections.append("| Net | Inferred Role |")
+            sections.append("| --- | --- |")
+            for rail in power_rails[:18]:
+                sections.append(f"| {rail.get('net', 'unknown')} | {rail.get('role', 'Power rail')} |")
+
+        interface_groups = analysis.get("interface_groups") or []
+        if interface_groups:
+            sections.append("#### Interface Coverage")
+            sections.append("| Subsystem | Evidence | Confidence |")
+            sections.append("| --- | --- | --- |")
+            for group in interface_groups[:14]:
+                evidence = ", ".join(group.get("evidence", []))
+                sections.append(f"| {group.get('name', 'Unknown')} | {evidence} | {group.get('confidence', 0)}% |")
+
+        component_counts = analysis.get("component_counts") or {}
+        if component_counts:
+            sections.append("#### Component Family Counts")
+            sections.append("| Family | Count |")
+            sections.append("| --- | --- |")
+            for family, count in component_counts.items():
+                sections.append(f"| {family.replace('_', ' ').title()} | {count} |")
+
+        key_parts = analysis.get("key_parts") or []
+        if key_parts:
+            sections.append("#### Key Part Candidates")
+            sections.append("| Reference | Candidate Part / Value |")
+            sections.append("| --- | --- |")
+            for part in key_parts[:20]:
+                sections.append(f"| {part.get('reference', 'unknown')} | {part.get('value_or_part', 'not provided')} |")
+
+        test_focus = analysis.get("test_focus") or []
+        if test_focus:
+            sections.append("#### Functional Test Focus")
+            sections.extend(f"- {item}" for item in test_focus[:12])
+
+        risk_flags = analysis.get("risk_flags") or []
+        if risk_flags:
+            sections.append("#### Engineering Review Flags")
+            sections.extend(f"- {item}" for item in risk_flags[:8])
+
+        return sections
+
+    @staticmethod
     def _document_type_guidance(document_type: str) -> str:
         guidance = {
             "user_manual": (
-                "- Treat the board as a hardware control/evaluation assembly until product usage context is confirmed.\n"
-                "- Document power input, regulator outputs, indicator LEDs, feedback inputs, and MCU-related rails as observed.\n"
-                "- Do not publish operating procedures until connector functions and firmware behavior are confirmed."
+                "- Present the board as an interface/base assembly until product enclosure, connector labeling, and firmware behavior are confirmed.\n"
+                "- Use the power rail map and interface coverage sections as the primary operator-facing structure.\n"
+                "- Keep unresolved high-speed, wireless, and field-wiring behaviors marked as engineering review items."
             ),
             "test_report": (
+                "- Turn each functional test focus item into a measured pass/fail row before production release.\n"
                 "- Verify every named rail at power-up before attaching external loads.\n"
-                "- Validate LED indicators, feedback paths, protection diodes, connectors, and regulator power-good behavior.\n"
-                "- Record measured voltages, ripple, thermal state, and pass/fail evidence per board revision."
+                "- Record measured voltages, signal continuity, protection behavior, thermal state, and board revision."
             ),
             "compliance_brief": (
                 "- Treat CE/FCC/RoHS status as not certified unless formal lab evidence is supplied.\n"
-                "- Use the schematic evidence to prepare pre-compliance checks for input protection, emissions risks, and restricted materials.\n"
-                "- Confirm automotive or industrial rating claims from component datasheets before customer release."
+                "- Prioritize pre-compliance review around high-speed interfaces, wireless modules, field wiring, and ESD/surge protection.\n"
+                "- Confirm all part-level regulatory and material declarations from supplier documentation."
             ),
             "bom": (
-                "- Use the component snapshot as a draft BOM seed only.\n"
+                "- Use the key part candidates and component family counts as a draft BOM seed only.\n"
                 "- Reconcile every reference designator against the native CAD BOM export before procurement.\n"
-                "- Confirm manufacturer part numbers, tolerances, packages, and lifecycle status."
+                "- Confirm manufacturer part numbers, package codes, tolerances, ratings, and lifecycle status."
             ),
         }
         return guidance.get(document_type, "- Review source evidence and confirm missing engineering values before release.")

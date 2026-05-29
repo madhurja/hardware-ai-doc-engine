@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pcb-dir", default="input_drop/pcb", help="Folder containing PCB/BOM manifests.")
     parser.add_argument("--output-dir", default="output_packages", help="Folder for generated deliverables.")
     parser.add_argument("--html-only", action="store_true", help="Write HTML instead of PDF.")
+    parser.add_argument("--local-only", action="store_true", help="Never call external AI APIs; generate from local evidence only.")
     parser.add_argument("--skip-git", action="store_true", help="Skip the local git snapshot step.")
     return parser
 
@@ -38,7 +39,7 @@ def main() -> int:
     targets = DOCUMENT_TYPES if args.type == "all" else (args.type,)
 
     print_progress(2, "Generating bounded technical draft")
-    generator = DocGenerationEngine()
+    generator = DocGenerationEngine(api_key="" if args.local_only else None)
 
     print_progress(3, "Compiling enterprise document")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

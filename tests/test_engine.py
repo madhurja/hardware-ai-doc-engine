@@ -77,14 +77,34 @@ class EngineTests(unittest.TestCase):
             self.assertIn("LED", draft)
 
     def test_parser_extracts_schematic_tokens_from_text(self) -> None:
-        text = "U156 LM5164QDDARQ1 GND VIN +12V 3V3 MCU_HV_FB1 R192 10K C133 2.2uF"
+        text = "U156 LM5164QDDARQ1 GND VIN +12V 3V3 MCU_HV_FB1 R192 10K C133 2.2uF SIMCOM1 SIM-M2"
 
         components = HardwareManifestParser._extract_component_tokens(text)
         nets = HardwareManifestParser._extract_net_tokens(text)
 
         self.assertIn({"reference": "U156", "value_or_part": "LM5164QDDARQ1"}, components)
+        self.assertIn({"reference": "SIMCOM1", "value_or_part": "SIM-M2"}, components)
         self.assertIn("MCU_HV_FB1", nets)
         self.assertIn("+12V", nets)
+
+    def test_schematic_analysis_classifies_cm4_interfaces(self) -> None:
+        text = """
+        CM4_5V CM4_3V3 CM4_1V8 VBAT USB0_P USB0_N HDMI0_SDA HDMI0_SCL PCIE_RX_P SD_PWR_ON75 1.8V
+        TRD0_P TRD0_N RJ1 SIMCOM1 SIM1_VCC GNSS_Enbale RS485 SP3485 U14 SMAJ12CA
+        U5 FE1_1S U9 PCF85063ATL FAN EMC2301 GPIO2 GPIO3 TPD4EUSB30
+        """
+
+        analysis = HardwareManifestParser._analyze_schematic_text(text)
+        groups = {group["name"] for group in analysis["interface_groups"]}
+        rails = {rail["net"] for rail in analysis["power_rails"]}
+
+        self.assertIn("USB", groups)
+        self.assertIn("Wireless/SIM", groups)
+        self.assertIn("RS485", groups)
+        self.assertIn("CM4_5V", rails)
+        self.assertNotIn("SD_PWR_ON75", rails)
+        self.assertNotIn("8V", rails)
+        self.assertTrue(analysis["risk_flags"])
 
 
 if __name__ == "__main__":

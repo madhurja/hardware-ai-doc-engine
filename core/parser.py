@@ -39,6 +39,35 @@ class HardwareManifestParser:
     SERIAL_PATTERN = re.compile(r"\bSerial(?:\d*)\.begin\((\d+)\)")
     SPI_PATTERN = re.compile(r"\bSPI\.begin\(\)")
     I2C_PATTERN = re.compile(r"\bWire\.begin\(([^)]*)\)")
+    INTERFACE_PATTERNS = {
+        "Power": ("CM4_5V", "+5V", "5V", "3V3", "1V8", "VBAT", "PWR_3V3", "VDD_3V3", "VDD_1V8", "12V"),
+        "Ethernet": ("ETH", "TRD", "RJ45", "MDI", "Ethernet"),
+        "USB": ("USB", "USBD", "VBUS", "DATA+", "DATA-", "D+", "D-"),
+        "HDMI": ("HDMI", "HOTPLUG", "CEC"),
+        "Camera/Display": ("CAM", "DSI", "CSI"),
+        "PCIe": ("PCIE", "PCIe", "PET", "PER", "CLKREQ"),
+        "GPIO Header": ("GPIO", "Raspberry 40 PIN", "WPiBCM", "ID_SCL", "ID_SDA"),
+        "SD/eMMC": ("SD_", "SDIO", "DAT0", "DAT1", "DAT2", "DAT3"),
+        "I2C": ("SCL", "SDA", "I2C"),
+        "UART": ("UART", "TXD", "RXD", "P_TX", "P_RX"),
+        "Wireless/SIM": ("SIM", "UIM", "SIMCOM", "GNSS", "FlightMode", "FightMode", "W_DISABLE", "LTE"),
+        "RTC": ("RTC", "PCF85063", "CR2032", "32.768K"),
+        "Fan": ("FAN", "TACH", "EMC2301"),
+        "RS485": ("RS485", "SP3485", "SMAJ", "A1", "B1"),
+        "LED Indicators": ("LED", "STA", "NET_LED", "PI_PWR_LED"),
+        "WiFi/Bluetooth Control": ("WIFI_EN", "BT_EN", "WiFi", "BT_nDisable"),
+        "Protection/ESD": ("TVS", "SMBJ", "SMAJ", "TPD4EUSB30", "SMF05C", "B5819"),
+    }
+    COMPONENT_FAMILIES = {
+        "integrated_circuits": re.compile(r"\bU\d{1,4}\b"),
+        "connectors_headers": re.compile(r"\b(?:J|JP|H|P|RJ|USB|HDMI)\d{1,4}\b"),
+        "resistors": re.compile(r"\bR\d{1,4}\b"),
+        "capacitors": re.compile(r"\bC\d{1,4}\b"),
+        "inductors": re.compile(r"\bL\d{1,4}\b"),
+        "diodes_tvs_leds": re.compile(r"\b(?:D|LED|TVS)\d{1,4}\b"),
+        "transistors_switches": re.compile(r"\b(?:Q|S)\d{1,4}\b"),
+        "crystals": re.compile(r"\bY\d{1,4}\b"),
+    }
 
     def __init__(
         self,
@@ -190,6 +219,7 @@ class HardwareManifestParser:
             "pages": pages,
             "detected_components": self._extract_component_tokens(combined_text),
             "detected_nets": self._extract_net_tokens(combined_text),
+            "analysis": self._analyze_schematic_text(combined_text),
             "document_dates": self._extract_document_dates(combined_text),
         }
 
@@ -205,7 +235,9 @@ class HardwareManifestParser:
 
     @staticmethod
     def _extract_component_tokens(text: str) -> list[dict[str, str]]:
-        token_pattern = re.compile(r"\b([URCLDQJPST][A-Z]?\d{1,4})\b")
+        token_pattern = re.compile(
+            r"\b((?:USB|HDMI|RJ|LED|TVS|SIMCOM|SIM_CARD)\d{1,4}|[URCLDQJPHSTY][A-Z]?\d{1,4}[A-Z]?)\b"
+        )
         value_pattern = re.compile(
             r"\b(\d+(?:\.\d+)?\s?(?:uF|nF|pF|K|k|R|ohm|uH|V|A)|[A-Z0-9-]{4,})\b",
             re.IGNORECASE,
@@ -216,7 +248,7 @@ class HardwareManifestParser:
         for idx, line in enumerate(lines):
             for match in token_pattern.finditer(line):
                 token = match.group(1)
-                if token in seen:
+                if token in seen or HardwareManifestParser._looks_like_signal_token(token):
                     continue
                 context = (line[match.end() :] + " " + " ".join(lines[idx + 1 : idx + 3])).strip()
                 value_match = value_pattern.search(context)
@@ -229,10 +261,139 @@ class HardwareManifestParser:
                 seen.add(token)
         return components[:300]
 
+    @classmethod
+    def _analyze_schematic_text(cls, text: str) -> dict[str, Any]:
+        compact_text = cls._compact_text(text, 50000)
+        nets = cls._extract_net_tokens(text)
+        components = cls._extract_component_tokens(text)
+        return {
+            "power_rails": cls._classify_power_rails(nets),
+            "interface_groups": cls._detect_interface_groups(compact_text),
+            "component_counts": cls._count_component_families(text),
+            "key_parts": cls._extract_key_parts(components),
+            "test_focus": cls._build_test_focus(compact_text, nets),
+            "risk_flags": cls._build_risk_flags(compact_text, nets),
+        }
+
+    @staticmethod
+    def _classify_power_rails(nets: list[str]) -> list[dict[str, str]]:
+        rails: list[dict[str, str]] = []
+        seen: set[str] = set()
+        named_fragments = {
+            "CM4_5V",
+            "CM4_3V3",
+            "CM4_1V8",
+            "PWR_3V3",
+            "VDD_3V3",
+            "VDD_1V8",
+            "HUB_3V3",
+            "HUB_1V8",
+            "HDMI_5V",
+            "FAN_VCC",
+            "VBAT",
+        }
+        voltage_pattern = re.compile(r"^\+?(?:1V2|1V8|3V|3V3|4V2|5V|12V|24V)$", re.IGNORECASE)
+        for net in nets:
+            normalized = net.upper().replace(".", "")
+            is_voltage = bool(voltage_pattern.fullmatch(normalized))
+            is_named_rail = normalized in named_fragments
+            if not (is_voltage or is_named_rail) or normalized in seen:
+                continue
+            role = "Power rail"
+            if "VBAT" in normalized:
+                role = "Battery or modem supply"
+            elif "1V8" in normalized:
+                role = "Low-voltage logic rail"
+            elif "3V3" in normalized:
+                role = "3.3 V logic rail"
+            elif "5V" in normalized:
+                role = "5 V input/distribution rail"
+            elif "12V" in normalized:
+                role = "12 V auxiliary rail"
+            rails.append({"net": net, "role": role})
+            seen.add(normalized)
+        return rails[:30]
+
+    @classmethod
+    def _detect_interface_groups(cls, text: str) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+        for name, patterns in cls.INTERFACE_PATTERNS.items():
+            hits = sorted({pattern for pattern in patterns if pattern.lower() in text.lower()})
+            if hits:
+                groups.append({"name": name, "evidence": hits[:8], "confidence": min(100, 35 + len(hits) * 15)})
+        return sorted(groups, key=lambda item: (-item["confidence"], item["name"]))
+
+    @classmethod
+    def _count_component_families(cls, text: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for family, pattern in cls.COMPONENT_FAMILIES.items():
+            counts[family] = len(set(pattern.findall(text)))
+        return counts
+
+    @staticmethod
+    def _extract_key_parts(components: list[dict[str, str]]) -> list[dict[str, str]]:
+        generic_values = {"not provided", "10K", "100K", "0R", "104", "100nF", "10uF", "22pF", "1K", "GND"}
+        key_reference_pattern = re.compile(r"^(?:U\d|SIMCOM\d|RJ\d|USB\d|HDMI\d|H\d|J\d)")
+        key_parts = []
+        for component in components:
+            reference = component.get("reference", "")
+            value = component.get("value_or_part", "")
+            if (
+                key_reference_pattern.search(reference)
+                and value
+                and value not in generic_values
+                and re.search(r"[A-Z]{2,}|\d{3,}", value)
+            ):
+                key_parts.append(component)
+        return key_parts[:40]
+
+    @classmethod
+    def _build_test_focus(cls, text: str, nets: list[str]) -> list[str]:
+        focus = []
+        rail_names = [rail["net"] for rail in cls._classify_power_rails(nets)[:8]]
+        if rail_names:
+            focus.append("Power-up sequencing and rail validation: " + ", ".join(rail_names))
+        for group in cls._detect_interface_groups(text)[:10]:
+            name = group["name"]
+            if name == "Protection/ESD":
+                focus.append("Protection device continuity and clamp orientation review")
+            elif name == "Wireless/SIM":
+                focus.append("SIM/LTE modem power, UART, USB, reset, and enable-line verification")
+            elif name == "USB":
+                focus.append("USB host/hub differential-pair continuity and VBUS current-limit validation")
+            elif name == "Ethernet":
+                focus.append("Ethernet magnetics, MDI pair mapping, LEDs, and shield grounding checks")
+            elif name == "HDMI":
+                focus.append("HDMI hotplug, DDC, 5 V switch, and high-speed pair continuity checks")
+            elif name == "RS485":
+                focus.append("RS485 A/B line polarity, termination, TVS, and direction-control checks")
+            else:
+                focus.append(f"{name} interface continuity and functional smoke test")
+        return focus[:14]
+
+    @classmethod
+    def _build_risk_flags(cls, text: str, nets: list[str]) -> list[str]:
+        flags = []
+        lower = text.lower()
+        if "usb" in lower or "hdmi" in lower or "pcie" in lower or "trd" in lower:
+            flags.append("High-speed differential routing requires impedance, length-match, and ESD review.")
+        if "sim" in lower or "gnss" in lower or "antenna" in lower:
+            flags.append("Wireless/SIM section requires RF, carrier, antenna, and certification evidence before release.")
+        if any("12V" in net or "VBAT" in net for net in nets):
+            flags.append("Mixed-voltage rails require power sequencing and over-current validation.")
+        if "rs485" in lower:
+            flags.append("RS485 field wiring requires surge/ESD, termination, and isolation/grounding review.")
+        if "cr2032" in lower:
+            flags.append("Coin-cell RTC backup requires battery polarity, leakage, and serviceability checks.")
+        if "fan" in lower:
+            flags.append("Fan output requires load current, tachometer, and fault-condition validation.")
+        return flags[:10]
+
     @staticmethod
     def _extract_net_tokens(text: str) -> list[str]:
         net_pattern = re.compile(
-            r"(?<![A-Za-z0-9_+])(?:GND|VIN|VBAT|VDC_IN|\+?\d+(?:V|V\d)|\dV\d|[A-Z][A-Z0-9_]*(?:_[A-Z0-9]+)+)(?![A-Za-z0-9_])"
+            r"(?<![A-Za-z0-9_+.])(?:GND|VIN|VBAT|VDC_IN|\+?\d+(?:V|V\d)|\dV\d|[A-Z][A-Z0-9_]*(?:_[A-Z0-9]+)+)(?![A-Za-z0-9_])",
+            re.IGNORECASE,
         )
         priority = []
         seen: set[str] = set()
@@ -241,7 +402,15 @@ class HardwareManifestParser:
             if net not in seen:
                 priority.append(net)
                 seen.add(net)
-        return priority[:200]
+        return priority[:500]
+
+    @staticmethod
+    def _looks_like_signal_token(token: str) -> bool:
+        return bool(
+            re.fullmatch(r"D\d+[NP]", token)
+            or re.fullmatch(r"D[MP]\d+", token)
+            or re.fullmatch(r"[A-Z]+D\d+[NP]", token)
+        )
 
     @staticmethod
     def _extract_document_dates(text: str) -> dict[str, str]:
