@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.log
+tools/
 
 # CRITICAL: Prevent proprietary client source, schematic, PCB, and generated
 # deliverable files from leaking into commits.
