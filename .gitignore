@@ -1,0 +1,14 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# CRITICAL: Prevent proprietary client source, schematic, PCB, and generated
+# deliverable files from leaking into commits.
+input_drop/**/*
+!input_drop/**/.gitkeep
+output_packages/**/*
+!output_packages/.gitkeep
+
