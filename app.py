@@ -141,6 +141,7 @@ def _summarize_profile(profile: dict) -> dict:
     optimization_actions = []
     validation_matrix = []
     bringup_sequence = []
+    skill_review_gates = []
     readiness_scores = []
     seen = {
         "rails": set(),
@@ -150,6 +151,7 @@ def _summarize_profile(profile: dict) -> dict:
         "optimization_actions": set(),
         "validation_matrix": set(),
         "bringup_sequence": set(),
+        "skill_review_gates": set(),
     }
 
     for manifest in manifests:
@@ -190,6 +192,11 @@ def _summarize_profile(profile: dict) -> dict:
             if step not in seen["bringup_sequence"]:
                 bringup_sequence.append(step)
                 seen["bringup_sequence"].add(step)
+        for gate in analysis.get("skill_review_gates") or []:
+            key = gate.get("id")
+            if key and key not in seen["skill_review_gates"]:
+                skill_review_gates.append(gate)
+                seen["skill_review_gates"].add(key)
 
     return {
         "power_rails": rails[:18],
@@ -199,6 +206,7 @@ def _summarize_profile(profile: dict) -> dict:
         "optimization_actions": optimization_actions[:10],
         "validation_matrix": validation_matrix[:12],
         "bringup_sequence": bringup_sequence[:10],
+        "skill_review_gates": skill_review_gates[:12],
         "readiness_score": round(sum(readiness_scores) / len(readiness_scores)) if readiness_scores else 0,
     }
 

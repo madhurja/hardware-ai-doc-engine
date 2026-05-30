@@ -261,6 +261,16 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 f"- Current score: {round(readiness_score)}/100. This is an evidence completeness indicator, not a certification result."
             )
 
+        skill_review_gates = analysis.get("skill_review_gates") or []
+        if skill_review_gates:
+            sections.append("#### Skill Pack Review Gates")
+            sections.append("| Priority | Gate | Source Skill | Evidence |")
+            sections.append("| --- | --- | --- | --- |")
+            for gate in skill_review_gates[:8]:
+                sections.append(
+                    f"| {gate.get('priority', 'P2')} | {gate.get('title', 'Review Gate')} | {gate.get('source_skill', 'skill-pack')} | {gate.get('evidence', 'project evidence present')} |"
+                )
+
         return sections
 
     @classmethod
@@ -289,6 +299,24 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.append("- 40-69 means the generated package is useful for internal review and bring-up planning.")
         sections.append("- 70-89 means the evidence is strong enough for structured customer-draft preparation after manual review.")
         sections.append("- 90-100 means the source package is highly complete, but final approval still requires measured lab evidence.")
+
+        if analysis["skill_review_gates"]:
+            sections.append("## Integrated Schematic And PCB Skill Pack")
+            sections.append(
+                "The review gates below are distilled from the provided Schematics-and-PCB skill pack and are triggered by detected rails, interfaces, components, and risk evidence."
+            )
+            sections.append("| Priority | Gate | Source Skill | Why It Was Triggered |")
+            sections.append("| --- | --- | --- | --- |")
+            for gate in analysis["skill_review_gates"][:14]:
+                sections.append(
+                    f"| {gate.get('priority', 'P2')} | {gate.get('title', 'Review Gate')} | {gate.get('source_skill', 'skill-pack')} | {gate.get('evidence', 'project evidence present')} |"
+                )
+            sections.append("### Skill Gate Action Checklist")
+            for gate in analysis["skill_review_gates"][:8]:
+                sections.append(f"#### {gate.get('title', 'Review Gate')}")
+                sections.append(f"- Objective: {gate.get('objective', 'Review required.')}")
+                for item in gate.get("checklist", [])[:5]:
+                    sections.append(f"- {item}")
 
         if analysis["interface_groups"]:
             sections.append("### Functional Block Summary")
@@ -444,6 +472,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "optimization_actions": [],
             "validation_matrix": [],
             "bringup_sequence": [],
+            "skill_review_gates": [],
             "readiness_scores": [],
         }
         seen = {
@@ -457,6 +486,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "optimization_actions",
                 "validation_matrix",
                 "bringup_sequence",
+                "skill_review_gates",
             )
         }
         for manifest in [*profile.schematics, *profile.pcb]:
@@ -502,6 +532,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 if item not in seen["bringup_sequence"]:
                     collected["bringup_sequence"].append(item)
                     seen["bringup_sequence"].add(item)
+            for gate in analysis.get("skill_review_gates") or []:
+                key = gate.get("id")
+                if key and key not in seen["skill_review_gates"]:
+                    collected["skill_review_gates"].append(gate)
+                    seen["skill_review_gates"].add(key)
         scores = collected.pop("readiness_scores")
         collected["readiness_score"] = round(sum(scores) / len(scores)) if scores else 0
         return collected

@@ -169,7 +169,7 @@ function dashboardScreen() {
     ["Schematics", metadata.schematic_files_scanned || 0, "PDF evidence scanned"],
     ["Rails", (analysis.power_rails || []).length, "Power domains found"],
     ["Subsystems", (analysis.interface_groups || []).length, "Functional blocks"],
-    ["Outputs", outputs.length, "Generated packages"],
+    ["Skill Gates", (analysis.skill_review_gates || []).length, "Imported review gates"],
   ];
 
   return `
@@ -191,6 +191,7 @@ function dashboardScreen() {
     <section class="content-grid">
       ${analysisPanel("Power Rails", analysis.power_rails || [], (rail) => `<strong>${escapeHtml(rail.net)}</strong><span>${escapeHtml(rail.role)}</span>`)}
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
+      ${skillGatePanel(analysis.skill_review_gates || [])}
       ${optimizationPanel(analysis.optimization_actions || [])}
       ${validationPanel(analysis.validation_matrix || [])}
     </section>
@@ -218,6 +219,21 @@ function optimizationPanel(items) {
     `).join("")
     : `<div class="empty-state">Optimization actions appear after schematic analysis.</div>`;
   return `<section class="panel wide-panel"><h3>200% Optimization Queue</h3><div class="stack-list">${body}</div></section>`;
+}
+
+function skillGatePanel(items) {
+  const body = items.length
+    ? items.slice(0, 6).map((item) => `
+      <div class="priority-row">
+        <span class="priority ${escapeHtml(item.priority || "P2")}">${escapeHtml(item.priority || "P2")}</span>
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.source_skill)} - ${escapeHtml(item.evidence)}</span>
+        </div>
+      </div>
+    `).join("")
+    : `<div class="empty-state">Skill gates appear after schematic or PCB evidence is detected.</div>`;
+  return `<section class="panel wide-panel"><h3>Schematic/PCB Skill Gates</h3><div class="stack-list">${body}</div></section>`;
 }
 
 function validationPanel(items) {
@@ -291,6 +307,7 @@ function generateScreen() {
           ${qualityItem("Optimization actions", (state.status.analysis?.optimization_actions || []).length)}
           ${qualityItem("Validation checks", (state.status.analysis?.validation_matrix || []).length)}
           ${qualityItem("Bring-up steps", (state.status.analysis?.bringup_sequence || []).length)}
+          ${qualityItem("Skill-pack gates", (state.status.analysis?.skill_review_gates || []).length)}
         </div>
       </section>
     </section>

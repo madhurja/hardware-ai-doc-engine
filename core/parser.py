@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from core.skill_rules import SkillRuleEngine
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -286,6 +288,14 @@ class HardwareManifestParser:
         )
         validation_matrix = cls._build_validation_matrix(interface_groups, power_rails)
         bringup_sequence = cls._build_bringup_sequence(power_rails, interface_groups)
+        skill_review_gates = SkillRuleEngine().build_review_gates(
+            compact_text,
+            power_rails,
+            interface_groups,
+            component_counts,
+            key_parts,
+            risk_flags,
+        )
         return {
             "power_rails": power_rails,
             "interface_groups": interface_groups,
@@ -296,12 +306,15 @@ class HardwareManifestParser:
             "optimization_actions": optimization_actions,
             "validation_matrix": validation_matrix,
             "bringup_sequence": bringup_sequence,
+            "skill_review_gates": skill_review_gates,
+            "skill_pack_summary": SkillRuleEngine.summarize_gates(skill_review_gates),
             "readiness_score": cls._calculate_readiness_score(
                 power_rails,
                 interface_groups,
                 key_parts,
                 risk_flags,
                 validation_matrix,
+                skill_review_gates,
             ),
         }
 
@@ -608,12 +621,14 @@ class HardwareManifestParser:
         key_parts: list[dict[str, str]],
         risk_flags: list[str],
         validation_matrix: list[dict[str, str]],
+        skill_review_gates: list[dict[str, Any]],
     ) -> int:
         score = 35
         score += min(20, len(power_rails) * 3)
         score += min(25, len(interface_groups) * 2)
         score += min(10, len(key_parts))
         score += min(10, len(validation_matrix))
+        score += min(10, len(skill_review_gates))
         score -= min(20, len(risk_flags) * 3)
         return max(0, min(100, score))
 

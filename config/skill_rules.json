@@ -1,0 +1,228 @@
+{
+  "version": "1.0",
+  "source_pack": "Schematics-and-PCB-Skills-main.zip",
+  "description": "Distilled schematic and PCB skill gates derived from the provided skill pack. These rules are evidence-triggered review gates for local document generation.",
+  "gates": [
+    {
+      "id": "schematic-topology-operating-point",
+      "source_skill": "schematic-analysis",
+      "title": "Schematic Topology And Operating Point Review",
+      "domain": "Schematic Analysis",
+      "priority": "P1",
+      "trigger_always": true,
+      "trigger_keywords": ["GND", "VCC", "VDD", "BIAS", "RESET", "ENABLE"],
+      "objective": "Confirm the schematic is electrically coherent before simulation or release documentation.",
+      "checklist": [
+        "Confirm every power pin is driven by a named rail.",
+        "Check for floating high-impedance nodes and missing bias paths.",
+        "Confirm outputs are not fighting other outputs.",
+        "Create an operating-point table for rails and key control signals.",
+        "Mark every unknown voltage/current value as evidence required."
+      ]
+    },
+    {
+      "id": "pcb-physics-analysis",
+      "source_skill": "pcb-analysis",
+      "title": "PCB Physics Review",
+      "domain": "PCB Analysis",
+      "priority": "P1",
+      "trigger_always": true,
+      "trigger_keywords": ["PCB", "TRACE", "VIA", "LAYER", "COPPER", "STACKUP"],
+      "objective": "Convert schematic findings into physical PCB risk checks for geometry, copper, thermal, and cost.",
+      "checklist": [
+        "Check DC power integrity and expected IR drop per rail.",
+        "Identify controlled-impedance and differential-pair nets.",
+        "Flag thermal hotspots around regulators, FETs, modem power, and fan output.",
+        "Check connector orientation, mounting, and mechanical stress points.",
+        "Record weakest assumptions that require CAD, Gerber, or measurement evidence."
+      ]
+    },
+    {
+      "id": "power-integrity-pdn",
+      "source_skill": "pcb-theory-power-integrity",
+      "title": "Power Integrity And PDN Gate",
+      "domain": "Power Integrity",
+      "priority": "P1",
+      "trigger_groups": ["Power", "Regulators/Power Control"],
+      "trigger_keywords": ["3V3", "5V", "12V", "VBAT", "PGOOD", "LDO", "DCDC", "TPS", "LM5164", "MP1476"],
+      "objective": "Verify the board can deliver clean, stable, low-impedance power to all consumers.",
+      "checklist": [
+        "Build a rail budget with idle, typical, peak, and fault current.",
+        "Define target impedance from allowed ripple and transient current.",
+        "Use bulk, mid, high-frequency, and very-high-frequency decoupling tiers where needed.",
+        "Require local 100 nF decoupling close to every VCC pin where CAD evidence is available.",
+        "Keep DC rail droop below 2 percent at critical consumers."
+      ]
+    },
+    {
+      "id": "signal-integrity-high-speed",
+      "source_skill": "pcb-theory-signal-integrity",
+      "title": "Signal Integrity Gate",
+      "domain": "Signal Integrity",
+      "priority": "P1",
+      "trigger_groups": ["USB", "HDMI", "PCIe", "Ethernet", "SD/eMMC"],
+      "trigger_keywords": ["USB", "HDMI", "PCIE", "TRD", "TMDS", "D+", "D-", "CLK", "DAT0", "DAT1"],
+      "objective": "Protect high-speed interfaces from reflections, skew, return-path detours, and crosstalk.",
+      "checklist": [
+        "Assign impedance targets per high-speed interface.",
+        "Check continuous reference plane and stitching vias at layer transitions.",
+        "Verify differential-pair polarity and length matching against interface requirements.",
+        "Avoid long stubs and uncontrolled branches.",
+        "Plan TDR, eye, or packet-level validation for fast links."
+      ]
+    },
+    {
+      "id": "emi-emc-external-ports",
+      "source_skill": "pcb-theory-emi-emc",
+      "title": "EMI/EMC External Port Gate",
+      "domain": "EMC",
+      "priority": "P1",
+      "trigger_groups": ["USB", "HDMI", "Ethernet", "RS485", "CAN/Fieldbus", "Wireless/SIM", "Protection/ESD"],
+      "trigger_keywords": ["TVS", "ESD", "CMC", "FERRITE", "SHIELD", "CONNECTOR", "ANTENNA", "RS485", "CAN"],
+      "objective": "Reduce emissions and improve immunity before pre-compliance testing.",
+      "checklist": [
+        "Place protection/filtering at every external connector or cable entry.",
+        "Minimize switching and cable loop areas.",
+        "Avoid routing high-speed signals across plane splits.",
+        "Define shield and chassis ground strategy.",
+        "Target at least 6 dB margin in pre-compliance scans."
+      ]
+    },
+    {
+      "id": "protection-cascade",
+      "source_skill": "component-protection-emc",
+      "title": "Protection Cascade Gate",
+      "domain": "Protection",
+      "priority": "P1",
+      "trigger_groups": ["Protection/ESD", "RS485", "CAN/Fieldbus", "USB", "Ethernet", "Wireless/SIM"],
+      "trigger_keywords": ["TVS", "MOV", "GDT", "TBU", "FUSE", "SURGE", "ESD", "EFT", "IEC61000"],
+      "objective": "Ensure external ports have coordinated ESD, surge, over-voltage, and filter strategy.",
+      "checklist": [
+        "Create a threat model per port: ESD, EFT, surge, cable fault, and repetition.",
+        "Use coarse, medium, and fine protection stages where the energy level requires it.",
+        "Keep clamp return paths short, wide, and routed to the correct ground reference.",
+        "Confirm TVS capacitance is compatible with the protected signal speed.",
+        "Document fuse and protection coordination for fault events."
+      ]
+    },
+    {
+      "id": "dft-testability",
+      "source_skill": "pcb-theory-dft",
+      "title": "Design For Testability Gate",
+      "domain": "DFT",
+      "priority": "P2",
+      "trigger_always": true,
+      "trigger_groups": ["Debug/Programming", "GPIO Header", "LED Indicators"],
+      "trigger_keywords": ["SWD", "JTAG", "UART", "BOOT", "RESET", "TP_", "TESTPOINT", "LED"],
+      "objective": "Make the board testable at prototype, production, and field-service stages.",
+      "checklist": [
+        "Add test access for every rail, ground, reset, boot, and critical interface signal.",
+        "Plan SWD/JTAG/UART programming or debug access.",
+        "Define ICT/flying-probe and functional test coverage targets.",
+        "Use diagnostic LEDs or telemetry where useful.",
+        "Record serial number, station, operator, measurements, and result traceability."
+      ]
+    },
+    {
+      "id": "pcb-testing-hierarchy",
+      "source_skill": "pcb-testing",
+      "title": "PCB Test Hierarchy Gate",
+      "domain": "Validation",
+      "priority": "P2",
+      "trigger_always": true,
+      "trigger_keywords": ["TEST", "FCT", "ICT", "JTAG", "SWD", "BOUNDARY", "FIXTURE"],
+      "objective": "Turn generated documentation into a layered validation and production test plan.",
+      "checklist": [
+        "Start with visual inspection and pre-power continuity.",
+        "Use current-limited power-up and verify every named rail.",
+        "Test clocks, boot, firmware programming, and debug path.",
+        "Run one simplest transaction on every interface.",
+        "Feed field failures back into the test plan."
+      ]
+    },
+    {
+      "id": "dfm-manufacturing",
+      "source_skill": "pcb-theory-dfm",
+      "title": "Design For Manufacturability Gate",
+      "domain": "DFM",
+      "priority": "P2",
+      "trigger_always": true,
+      "trigger_keywords": ["PCB", "DRILL", "VIA", "SOLDER", "MASK", "PANEL", "FINISH", "ENIG", "HASL"],
+      "objective": "Keep the board inside the selected fabricator capability tier and avoid avoidable yield loss.",
+      "checklist": [
+        "Confirm target fabricator capability before layout release.",
+        "Match DRC to trace, space, drill, annular ring, mask, and copper rules.",
+        "Specify stackup, copper weight, finish, impedance table, via fill, and panelization.",
+        "Add fiducials and test coupons where production requires them.",
+        "Use fabricator DFM review before ordering."
+      ]
+    },
+    {
+      "id": "thermal-reliability",
+      "source_skill": "pcb-theory-thermal",
+      "title": "Thermal Reliability Gate",
+      "domain": "Thermal",
+      "priority": "P2",
+      "trigger_groups": ["Power", "Regulators/Power Control", "Fan", "Wireless/SIM"],
+      "trigger_keywords": ["FAN", "REG", "LDO", "DCDC", "MOSFET", "QFN", "THERMAL", "HEATSINK"],
+      "objective": "Protect component life by budgeting dissipation and validating junction temperature.",
+      "checklist": [
+        "Estimate per-component dissipation for regulators, FETs, modem power, and fan drivers.",
+        "Keep junction temperature below 80 percent of absolute maximum at worst ambient.",
+        "Use copper spreading, thermal vias, heatsink, or airflow where needed.",
+        "Separate heat sources from sensitive analog/RF parts.",
+        "Validate with thermal camera or contact measurements."
+      ]
+    },
+    {
+      "id": "supply-chain-bom",
+      "source_skill": "component-supply-chain-bom",
+      "title": "Supply Chain And BOM Gate",
+      "domain": "BOM",
+      "priority": "P2",
+      "trigger_component_families": ["integrated_circuits", "connectors_headers", "diodes_tvs_leds"],
+      "trigger_keywords": ["BOM", "MPN", "LCSC", "JLCPCB", "DIGIKEY", "MOUSER", "NRND", "EOL"],
+      "objective": "Treat every extracted key part as a supply-chain risk object before procurement.",
+      "checklist": [
+        "Confirm lifecycle status: Active, NRND, LTB, EOL, or Obsolete.",
+        "Identify at least one qualified alternate for critical parts.",
+        "Check stock, lead time, MOQ, package, and grade.",
+        "Avoid grey-market sources unless counterfeit screening is specified.",
+        "Maintain an approved vendor list tied to board revision."
+      ]
+    },
+    {
+      "id": "wireless-rf-certification",
+      "source_skill": "component-iot-rf-wireless",
+      "title": "Wireless/RF Certification Gate",
+      "domain": "RF/Wireless",
+      "priority": "P1",
+      "trigger_groups": ["Wireless/SIM", "WiFi/Bluetooth Control"],
+      "trigger_keywords": ["SIM", "GNSS", "LTE", "ANT", "ANTENNA", "RF", "WIFI", "BT"],
+      "objective": "Separate radio connectivity from release claims that require antenna, carrier, RF, and regional evidence.",
+      "checklist": [
+        "Confirm approved antenna, RF path, SIM ESD, modem supply, and reset/enable lines.",
+        "Document regional certification and carrier requirements.",
+        "Validate network registration, GNSS, UART/USB data, and status indicators.",
+        "Keep antenna and RF layout constraints separate from ordinary digital routing.",
+        "Record RF exposure and enclosure assumptions."
+      ]
+    },
+    {
+      "id": "isolation-creepage-clearance",
+      "source_skill": "pcb-theory-creepage-clearance",
+      "title": "Isolation, Creepage, And Clearance Gate",
+      "domain": "Safety",
+      "priority": "P1",
+      "trigger_keywords": ["HV", "HIGH_VOLTAGE", "AC_L", "AC_N", "PE", "Y1", "Y2", "GDT", "MOV", "ISOLATED", "TRANSFORMER", "240V", "400V"],
+      "objective": "Prevent safety documentation from claiming release readiness without spacing and insulation evidence.",
+      "checklist": [
+        "Identify hazardous voltage domains and protective earth strategy.",
+        "Verify creepage and clearance against the product standard and pollution degree.",
+        "Confirm slots, barriers, opto/isolator ratings, and transformer insulation class.",
+        "Separate primary, secondary, SELV, chassis, and signal ground references.",
+        "Require lab safety evidence before customer-facing compliance claims."
+      ]
+    }
+  ]
+}

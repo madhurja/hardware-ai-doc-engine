@@ -7,6 +7,7 @@ from pathlib import Path
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
 from core.parser import HardwareManifestParser
+from core.skill_rules import SkillRuleEngine
 
 
 class EngineTests(unittest.TestCase):
@@ -121,6 +122,18 @@ class EngineTests(unittest.TestCase):
                                     }
                                 ],
                                 "bringup_sequence": ["Verify base rails before modem testing."],
+                                "skill_review_gates": [
+                                    {
+                                        "id": "wireless-rf-certification",
+                                        "title": "Wireless/RF Certification Gate",
+                                        "priority": "P1",
+                                        "domain": "RF/Wireless",
+                                        "source_skill": "component-iot-rf-wireless",
+                                        "objective": "Confirm radio evidence.",
+                                        "checklist": ["Confirm antenna and SIM evidence."],
+                                        "evidence": "groups: Wireless/SIM",
+                                    }
+                                ],
                                 "readiness_score": 74,
                             },
                         }
@@ -139,6 +152,8 @@ class EngineTests(unittest.TestCase):
             self.assertIn("Troubleshooting Matrix", draft)
             self.assertIn("Professional Validation Matrix", draft)
             self.assertIn("200 Percent Optimization Roadmap", draft)
+            self.assertIn("Integrated Schematic And PCB Skill Pack", draft)
+            self.assertIn("Wireless/RF Certification Gate", draft)
             self.assertIn("SIMCOM1", draft)
 
     def test_parser_extracts_schematic_tokens_from_text(self) -> None:
@@ -173,7 +188,29 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(analysis["optimization_actions"])
         self.assertTrue(analysis["validation_matrix"])
         self.assertTrue(analysis["bringup_sequence"])
+        self.assertTrue(analysis["skill_review_gates"])
+        gate_titles = {gate["title"] for gate in analysis["skill_review_gates"]}
+        self.assertIn("Signal Integrity Gate", gate_titles)
+        self.assertIn("Power Integrity And PDN Gate", gate_titles)
         self.assertGreater(analysis["readiness_score"], 0)
+
+    def test_skill_rule_engine_triggers_review_gates(self) -> None:
+        engine = SkillRuleEngine()
+        gates = engine.build_review_gates(
+            "USB HDMI PCIE 3V3 VBAT TVS SIM ANTENNA",
+            [{"net": "3V3", "role": "3.3 V logic rail"}],
+            [{"name": "USB"}, {"name": "Wireless/SIM"}, {"name": "Protection/ESD"}],
+            {"integrated_circuits": 2, "connectors_headers": 1},
+            [{"reference": "U1", "value_or_part": "MCU"}],
+            ["High-speed differential routing requires impedance review."],
+        )
+
+        titles = {gate["title"] for gate in gates}
+
+        self.assertIn("Signal Integrity Gate", titles)
+        self.assertIn("Wireless/RF Certification Gate", titles)
+        self.assertIn("Supply Chain And BOM Gate", titles)
+        self.assertTrue(SkillRuleEngine.summarize_gates(gates)["gate_count"])
 
 
 if __name__ == "__main__":
