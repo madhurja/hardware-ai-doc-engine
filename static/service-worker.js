@@ -1,4 +1,4 @@
-const CACHE_NAME = "hardware-ai-doc-engine-v2";
+const CACHE_NAME = "hardware-ai-doc-engine-v3";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
