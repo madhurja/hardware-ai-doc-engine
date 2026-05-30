@@ -103,6 +103,25 @@ class EngineTests(unittest.TestCase):
                                 "key_parts": [{"reference": "SIMCOM1", "value_or_part": "SIM-M2"}],
                                 "test_focus": ["SIM/LTE modem power, UART, USB, reset, and enable-line verification"],
                                 "risk_flags": ["Wireless/SIM section requires RF evidence before release."],
+                                "optimization_actions": [
+                                    {
+                                        "priority": "P1",
+                                        "area": "Wireless readiness",
+                                        "recommendation": "Add modem release gate.",
+                                        "why": "Improves field readiness.",
+                                        "evidence": "SIM",
+                                    }
+                                ],
+                                "validation_matrix": [
+                                    {
+                                        "subsystem": "Wireless/SIM",
+                                        "objective": "Confirm modem path",
+                                        "method": "Check power, SIM, UART, and antenna.",
+                                        "acceptance": "Module responds.",
+                                    }
+                                ],
+                                "bringup_sequence": ["Verify base rails before modem testing."],
+                                "readiness_score": 74,
                             },
                         }
                     ],
@@ -118,6 +137,8 @@ class EngineTests(unittest.TestCase):
             self.assertIn("Interface Operation Guide", draft)
             self.assertIn("Subsystem Service Notes", draft)
             self.assertIn("Troubleshooting Matrix", draft)
+            self.assertIn("Professional Validation Matrix", draft)
+            self.assertIn("200 Percent Optimization Roadmap", draft)
             self.assertIn("SIMCOM1", draft)
 
     def test_parser_extracts_schematic_tokens_from_text(self) -> None:
@@ -149,6 +170,10 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("SD_PWR_ON75", rails)
         self.assertNotIn("8V", rails)
         self.assertTrue(analysis["risk_flags"])
+        self.assertTrue(analysis["optimization_actions"])
+        self.assertTrue(analysis["validation_matrix"])
+        self.assertTrue(analysis["bringup_sequence"])
+        self.assertGreater(analysis["readiness_score"], 0)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hardware AI Documentation Engine">
+  <rect width="512" height="512" rx="96" fill="#101826"/>
+  <path d="M128 130h256v252H128z" fill="#f8fafc"/>
+  <path d="M156 170h200v22H156zm0 52h200v22H156zm0 52h132v22H156z" fill="#142033"/>
+  <path d="M104 210h48v28h-48zm256 0h48v28h-48zm-256 76h48v28h-48zm256 0h48v28h-48z" fill="#0f766e"/>
+  <path d="M212 70h88v78h-88zM212 364h88v78h-88z" fill="#0f766e"/>
+  <path d="M235 86h42v42h-42zm0 298h42v42h-42z" fill="#34d399"/>
+  <path d="m331 314 20 20 45-54 21 18-64 78-43-43z" fill="#c27803"/>
+</svg>

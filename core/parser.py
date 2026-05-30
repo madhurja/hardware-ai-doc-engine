@@ -50,12 +50,17 @@ class HardwareManifestParser:
         "SD/eMMC": ("SD_", "SDIO", "DAT0", "DAT1", "DAT2", "DAT3"),
         "I2C": ("SCL", "SDA", "I2C"),
         "UART": ("UART", "TXD", "RXD", "P_TX", "P_RX"),
+        "SPI": ("SPI", "MOSI", "MISO", "SCLK", "SPI_CS", "CS0", "CS1"),
+        "CAN/Fieldbus": ("CANH", "CANL", "CAN_TX", "CAN_RX", "TJA105", "SN65HVD"),
+        "Audio/I2S": ("I2S", "PCM", "BCLK", "LRCLK", "MCLK", "DIN", "DOUT"),
+        "Debug/Programming": ("JTAG", "SWD", "BOOT", "RUN", "RESET", "GLOBAL_EN", "nRPIBOOT"),
         "Wireless/SIM": ("SIM", "UIM", "SIMCOM", "GNSS", "FlightMode", "FightMode", "W_DISABLE", "LTE"),
         "RTC": ("RTC", "PCF85063", "CR2032", "32.768K"),
         "Fan": ("FAN", "TACH", "EMC2301"),
         "RS485": ("RS485", "SP3485", "SMAJ", "A1", "B1"),
         "LED Indicators": ("LED", "STA", "NET_LED", "PI_PWR_LED"),
         "WiFi/Bluetooth Control": ("WIFI_EN", "BT_EN", "WiFi", "BT_nDisable"),
+        "Regulators/Power Control": ("TPS", "MP1476", "LM5164", "REG_", "LDO", "DCDC", "DC/DC", "PWR_EN", "ENABLE", "PGOOD"),
         "Protection/ESD": ("TVS", "SMBJ", "SMAJ", "TPD4EUSB30", "SMF05C", "B5819"),
     }
     COMPONENT_FAMILIES = {
@@ -266,13 +271,38 @@ class HardwareManifestParser:
         compact_text = cls._compact_text(text, 50000)
         nets = cls._extract_net_tokens(text)
         components = cls._extract_component_tokens(text)
+        power_rails = cls._classify_power_rails(nets)
+        interface_groups = cls._detect_interface_groups(compact_text)
+        component_counts = cls._count_component_families(text)
+        key_parts = cls._extract_key_parts(components)
+        test_focus = cls._build_test_focus(compact_text, nets)
+        risk_flags = cls._build_risk_flags(compact_text, nets)
+        optimization_actions = cls._build_optimization_actions(
+            compact_text,
+            power_rails,
+            interface_groups,
+            component_counts,
+            risk_flags,
+        )
+        validation_matrix = cls._build_validation_matrix(interface_groups, power_rails)
+        bringup_sequence = cls._build_bringup_sequence(power_rails, interface_groups)
         return {
-            "power_rails": cls._classify_power_rails(nets),
-            "interface_groups": cls._detect_interface_groups(compact_text),
-            "component_counts": cls._count_component_families(text),
-            "key_parts": cls._extract_key_parts(components),
-            "test_focus": cls._build_test_focus(compact_text, nets),
-            "risk_flags": cls._build_risk_flags(compact_text, nets),
+            "power_rails": power_rails,
+            "interface_groups": interface_groups,
+            "component_counts": component_counts,
+            "key_parts": key_parts,
+            "test_focus": test_focus,
+            "risk_flags": risk_flags,
+            "optimization_actions": optimization_actions,
+            "validation_matrix": validation_matrix,
+            "bringup_sequence": bringup_sequence,
+            "readiness_score": cls._calculate_readiness_score(
+                power_rails,
+                interface_groups,
+                key_parts,
+                risk_flags,
+                validation_matrix,
+            ),
         }
 
     @staticmethod
@@ -388,6 +418,204 @@ class HardwareManifestParser:
         if "fan" in lower:
             flags.append("Fan output requires load current, tachometer, and fault-condition validation.")
         return flags[:10]
+
+    @staticmethod
+    def _build_optimization_actions(
+        text: str,
+        power_rails: list[dict[str, str]],
+        interface_groups: list[dict[str, Any]],
+        component_counts: dict[str, int],
+        risk_flags: list[str],
+    ) -> list[dict[str, str]]:
+        group_names = {group.get("name") for group in interface_groups}
+        actions: list[dict[str, str]] = []
+
+        def add(priority: str, area: str, recommendation: str, why: str, evidence: str) -> None:
+            actions.append(
+                {
+                    "priority": priority,
+                    "area": area,
+                    "recommendation": recommendation,
+                    "why": why,
+                    "evidence": evidence,
+                }
+            )
+
+        if power_rails:
+            add(
+                "P1",
+                "Power integrity",
+                "Build a measured rail budget with no-load, boot, peripheral-load, and fault-current rows.",
+                "This converts rail names into evidence that can be used for release decisions and customer ratings.",
+                ", ".join(rail["net"] for rail in power_rails[:6]),
+            )
+        else:
+            add(
+                "P1",
+                "Power evidence",
+                "Add explicit input and regulator net labels before generating customer manuals.",
+                "The engine cannot produce a safe bring-up plan without named voltage domains.",
+                "No named rails detected",
+            )
+
+        if {"USB", "HDMI", "PCIe", "Ethernet"} & group_names:
+            add(
+                "P1",
+                "High-speed interfaces",
+                "Add impedance, length-match, pair polarity, and ESD review checkpoints to the release checklist.",
+                "High-speed connectors are frequent sources of hidden board-spin risk.",
+                ", ".join(sorted({"USB", "HDMI", "PCIe", "Ethernet"} & group_names)),
+            )
+
+        if "Wireless/SIM" in group_names:
+            add(
+                "P1",
+                "Wireless readiness",
+                "Separate modem power, SIM, antenna, RF exposure, and carrier-certification evidence into their own release gate.",
+                "Wireless sections need more proof than schematic connectivity before field deployment.",
+                "Wireless/SIM evidence detected",
+            )
+
+        if {"RS485", "CAN/Fieldbus"} & group_names:
+            add(
+                "P2",
+                "Field wiring robustness",
+                "Document polarity, termination, biasing, isolation/ground strategy, and surge/ESD validation.",
+                "Field wiring failures often come from installation variation rather than firmware behavior.",
+                ", ".join(sorted({"RS485", "CAN/Fieldbus"} & group_names)),
+            )
+
+        if "Protection/ESD" in group_names or risk_flags:
+            add(
+                "P2",
+                "Protection network",
+                "Add a protection-device table with location, protected pins, clamp direction, and test evidence.",
+                "Protection parts are easy to list but need orientation and placement validation.",
+                "ESD/protection or risk flags detected",
+            )
+
+        if component_counts.get("integrated_circuits", 0) or component_counts.get("connectors_headers", 0):
+            add(
+                "P2",
+                "BOM traceability",
+                "Reconcile extracted IC and connector references against the native CAD BOM before procurement or release.",
+                "PDF text extraction is a strong review seed, not a manufacturing BOM authority.",
+                f"{component_counts.get('integrated_circuits', 0)} ICs, {component_counts.get('connectors_headers', 0)} connectors",
+            )
+
+        if "Debug/Programming" in group_names:
+            add(
+                "P3",
+                "Service workflow",
+                "Publish a recovery and programming procedure covering boot mode, reset, debug headers, and expected LED states.",
+                "A product-like app/manual needs a clear recovery path for support teams.",
+                "Debug/programming signals detected",
+            )
+
+        if "Fan" in group_names:
+            add(
+                "P3",
+                "Thermal control",
+                "Add fan current, tachometer, stalled-fan, and enclosure airflow validation to the test pack.",
+                "Thermal accessories can change current draw, acoustics, and product reliability.",
+                "Fan control evidence detected",
+            )
+
+        if not actions:
+            add(
+                "P2",
+                "Evidence quality",
+                "Upload schematic PDFs, BOM exports, and firmware pin maps before producing a release-grade document.",
+                "The engine becomes much stronger as source evidence coverage improves.",
+                "Limited evidence detected",
+            )
+
+        return actions[:12]
+
+    @staticmethod
+    def _build_validation_matrix(
+        interface_groups: list[dict[str, Any]],
+        power_rails: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        matrix: list[dict[str, str]] = []
+        for rail in power_rails[:6]:
+            matrix.append(
+                {
+                    "subsystem": rail.get("net", "Power rail"),
+                    "objective": "Confirm safe power availability",
+                    "method": "Measure voltage, ramp, current draw, ripple, and thermal behavior.",
+                    "acceptance": "Within rated tolerance with no abnormal heating or current limiting.",
+                }
+            )
+
+        validation_notes = {
+            "USB": ("Confirm USB data and power path", "Check VBUS, D+/D- continuity, reset, enumeration, and current limiting.", "Known-good device enumerates without VBUS sag."),
+            "HDMI": ("Confirm display interface", "Check HDMI 5 V, hotplug, DDC, CEC, and video detection.", "Display is detected repeatedly with a known-good cable."),
+            "Ethernet": ("Confirm wired networking", "Check MDI pair continuity, magnetics, LEDs, link negotiation, and packet transfer.", "Stable link and data transfer across reboot cycles."),
+            "Wireless/SIM": ("Confirm modem and SIM path", "Check modem rails, enable/reset, SIM voltage, UART/USB, antenna, and registration evidence.", "Module responds and reaches the intended network test state."),
+            "RS485": ("Confirm field bus operation", "Check A/B polarity, termination, biasing, DE/RE timing, TVS, and loopback.", "Loopback and field device communication pass without bus contention."),
+            "CAN/Fieldbus": ("Confirm field bus operation", "Check CANH/CANL polarity, termination, transceiver supply, and loopback traffic.", "Bus frames transmit and receive at the target bitrate."),
+            "RTC": ("Confirm time retention", "Check backup voltage, crystal start, I2C access, and retention after power removal.", "Time is retained for the required service interval."),
+            "Fan": ("Confirm thermal output", "Check fan voltage, current, tachometer feedback, PWM/control, and stalled-fan response.", "Fan speed feedback and fault behavior match requirements."),
+            "GPIO Header": ("Confirm expansion safety", "Measure idle voltage, direction, pull state, and firmware mapping for each exposed pin.", "Pins match the published connector table."),
+            "Protection/ESD": ("Confirm protection readiness", "Review clamp direction, protected nets, continuity, leakage, and pre-compliance evidence.", "Protection parts are correctly oriented and do not load active signals."),
+        }
+
+        for group in interface_groups:
+            name = group.get("name", "Subsystem")
+            objective, method, acceptance = validation_notes.get(
+                name,
+                (
+                    "Confirm subsystem function",
+                    "Run continuity, voltage, firmware, and smoke checks against the schematic evidence.",
+                    "Measured behavior matches the intended product function.",
+                ),
+            )
+            matrix.append(
+                {
+                    "subsystem": name,
+                    "objective": objective,
+                    "method": method,
+                    "acceptance": acceptance,
+                }
+            )
+        return matrix[:18]
+
+    @staticmethod
+    def _build_bringup_sequence(
+        power_rails: list[dict[str, str]],
+        interface_groups: list[dict[str, Any]],
+    ) -> list[str]:
+        group_names = {group.get("name") for group in interface_groups}
+        sequence = [
+            "Perform visual inspection for solder bridges, missing parts, connector damage, and board revision mismatch.",
+            "Power the board with a current-limited supply and no external peripherals attached.",
+        ]
+        if power_rails:
+            sequence.append("Verify base rails in order: " + ", ".join(rail["net"] for rail in power_rails[:8]) + ".")
+        sequence.append("Confirm reset, enable, boot-mode, and status indicator behavior before interface testing.")
+        ordered_groups = ["USB", "HDMI", "Ethernet", "RTC", "Fan", "Wireless/SIM", "RS485", "CAN/Fieldbus", "GPIO Header"]
+        for name in ordered_groups:
+            if name in group_names:
+                sequence.append(f"Attach and validate the {name} block after base power is stable.")
+        sequence.append("Record measurements, screenshots/logs, board revision, firmware version, and test operator.")
+        return sequence[:14]
+
+    @staticmethod
+    def _calculate_readiness_score(
+        power_rails: list[dict[str, str]],
+        interface_groups: list[dict[str, Any]],
+        key_parts: list[dict[str, str]],
+        risk_flags: list[str],
+        validation_matrix: list[dict[str, str]],
+    ) -> int:
+        score = 35
+        score += min(20, len(power_rails) * 3)
+        score += min(25, len(interface_groups) * 2)
+        score += min(10, len(key_parts))
+        score += min(10, len(validation_matrix))
+        score -= min(20, len(risk_flags) * 3)
+        return max(0, min(100, score))
 
     @staticmethod
     def _extract_net_tokens(text: str) -> list[str]:

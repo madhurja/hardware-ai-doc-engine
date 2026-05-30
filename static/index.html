@@ -2,159 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="Local browser app for generating professional hardware documentation from schematics, PCB evidence, and firmware files.">
   <title>Hardware AI Documentation Engine</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/assets/app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/assets/app-icon.svg">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="Workspace">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" role="img"><path d="M7 3h10v4h4v10h-4v4H7v-4H3V7h4V3Zm2 2v4H5v6h4v4h6v-4h4V9h-4V5H9Zm2 6h2v2h-2v-2Z"/></svg>
-        </div>
-        <div>
-          <strong>Doc Engine</strong>
-          <span>Local hardware documentation node</span>
-        </div>
-      </div>
-
-      <nav class="nav-list" aria-label="Sections">
-        <a href="#intake">Intake</a>
-        <a href="#analysis">Analysis</a>
-        <a href="#generate">Generate</a>
-        <a href="#outputs">Outputs</a>
-      </nav>
-
-      <div class="privacy-panel">
-        <span class="status-dot"></span>
-        <div>
-          <strong>Local-first mode</strong>
-          <p>Inputs and deliverables stay ignored by git. API use is opt-in.</p>
-        </div>
-      </div>
-    </aside>
-
-    <main>
-      <section class="top-band">
-        <div class="intro">
-          <p class="eyebrow">Engineering documentation workstation</p>
-          <h1>Turn schematics into delivery-ready manuals, reports, briefs, and BOM drafts.</h1>
-          <p class="lede">Upload hardware files, inspect detected subsystems, then generate polished PDF packages from a private local pipeline.</p>
-          <div class="metric-row" aria-label="Workspace metrics">
-            <div><strong id="metricSchematics">0</strong><span>Schematics</span></div>
-            <div><strong id="metricRails">0</strong><span>Rails</span></div>
-            <div><strong id="metricInterfaces">0</strong><span>Interfaces</span></div>
-            <div><strong id="metricOutputs">0</strong><span>Outputs</span></div>
-          </div>
-        </div>
-        <figure class="hero-visual">
-          <img src="/static/assets/hardware-workbench.jpg" alt="Engineering desk with PCB, schematic sheets, and generated technical documentation">
-        </figure>
-      </section>
-
-      <section class="workspace-grid">
-        <form class="tool-panel" id="intake" aria-label="Upload inputs">
-          <div class="section-heading">
-            <span class="icon-wrap" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 3 4 9v11h16V9l-8-6Zm0 2.5L18 10v8H6v-8l6-4.5Zm-3 6.5h6v2H9v-2Z"/></svg>
-            </span>
-            <div>
-              <p class="eyebrow">Intake</p>
-              <h2>Add source files</h2>
-            </div>
-          </div>
-          <label for="target">Destination</label>
-          <select id="target" name="target">
-            <option value="schematics">Schematics / PDFs</option>
-            <option value="code">Firmware source</option>
-            <option value="pcb">PCB / BOM manifests</option>
-          </select>
-          <label for="files">Files</label>
-          <input id="files" name="files" type="file" multiple>
-          <button class="primary-btn" type="submit">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v8l3-3 1.4 1.4L12 15.8l-5.4-5.4L8 9l3 3V4ZM5 18h14v2H5v-2Z"/></svg>
-            Upload to intake
-          </button>
-          <p class="helper">Customer files are stored in ignored intake folders and are not staged for GitHub.</p>
-        </form>
-
-        <section class="tool-panel" id="generate" aria-label="Generate documentation">
-          <div class="section-heading">
-            <span class="icon-wrap" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5V3Zm9 2H7v14h10V8h-3V5Zm-5 6h6v2H9v-2Zm0 4h6v2H9v-2Z"/></svg>
-            </span>
-            <div>
-              <p class="eyebrow">Generate</p>
-              <h2>Build document pack</h2>
-            </div>
-          </div>
-          <label for="docType">Document type</label>
-          <select id="docType">
-            <option value="user_manual">Detailed user manual</option>
-            <option value="test_report">Functional test report</option>
-            <option value="compliance_brief">Compliance brief</option>
-            <option value="bom">Draft BOM</option>
-            <option value="all">Full package</option>
-          </select>
-          <label class="switch-row">
-            <input id="localOnly" type="checkbox" checked>
-            <span>Local-only generation</span>
-          </label>
-          <button class="primary-btn" id="generateBtn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 2.2 6.8H21l-5.5 4 2.1 6.8-5.6-4.2-5.6 4.2 2.1-6.8L3 8.8h6.8L12 2Z"/></svg>
-            Generate PDFs
-          </button>
-          <p class="helper">Clear local-only only when you intentionally want API-assisted drafting.</p>
-        </section>
-      </section>
-
-      <section class="analysis-band" id="analysis">
-        <div class="section-heading">
-          <span class="icon-wrap" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4 5h16v2H4V5Zm2 4h12v2H6V9Zm-2 4h16v2H4v-2Zm2 4h8v2H6v-2Z"/></svg>
-          </span>
-          <div>
-            <p class="eyebrow">Live analysis</p>
-            <h2>Detected engineering evidence</h2>
-          </div>
-        </div>
-        <div class="analysis-grid">
-          <div class="analysis-list">
-            <h3>Power rails</h3>
-            <div id="railsList" class="tag-list"></div>
-          </div>
-          <div class="analysis-list">
-            <h3>Subsystems</h3>
-            <div id="interfacesList" class="tag-list"></div>
-          </div>
-          <div class="analysis-list">
-            <h3>Key parts</h3>
-            <div id="partsList" class="compact-list"></div>
-          </div>
-          <div class="analysis-list">
-            <h3>Review flags</h3>
-            <div id="riskList" class="compact-list"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="outputs-band" id="outputs">
-        <div class="section-heading">
-          <span class="icon-wrap" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm2 2v12h12V6H6Zm2 2h8v2H8V8Zm0 4h8v2H8v-2Z"/></svg>
-          </span>
-          <div>
-            <p class="eyebrow">Output packages</p>
-            <h2>Generated deliverables</h2>
-          </div>
-        </div>
-        <div id="outputList" class="output-list"></div>
-      </section>
-    </main>
-  </div>
-
+  <div id="app" class="app-root" aria-live="polite"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js" type="module"></script>
 </body>
 </html>

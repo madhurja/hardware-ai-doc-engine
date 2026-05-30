@@ -229,6 +229,38 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("#### Engineering Review Flags")
             sections.extend(f"- {item}" for item in risk_flags[:8])
 
+        optimization_actions = analysis.get("optimization_actions") or []
+        if optimization_actions:
+            sections.append("#### Optimization Actions")
+            sections.append("| Priority | Area | Recommendation |")
+            sections.append("| --- | --- | --- |")
+            for action in optimization_actions[:8]:
+                sections.append(
+                    f"| {action.get('priority', 'P2')} | {action.get('area', 'Engineering')} | {action.get('recommendation', 'Review required.')} |"
+                )
+
+        validation_matrix = analysis.get("validation_matrix") or []
+        if validation_matrix:
+            sections.append("#### Validation Matrix")
+            sections.append("| Subsystem | Objective | Method | Acceptance |")
+            sections.append("| --- | --- | --- | --- |")
+            for item in validation_matrix[:8]:
+                sections.append(
+                    f"| {item.get('subsystem', 'Subsystem')} | {item.get('objective', 'Confirm behavior')} | {item.get('method', 'Test required.')} | {item.get('acceptance', 'Evidence recorded.')} |"
+                )
+
+        bringup_sequence = analysis.get("bringup_sequence") or []
+        if bringup_sequence:
+            sections.append("#### Bring-Up Sequence")
+            sections.extend(f"- {item}" for item in bringup_sequence[:10])
+
+        readiness_score = analysis.get("readiness_score")
+        if isinstance(readiness_score, (int, float)):
+            sections.append("#### Evidence Readiness Score")
+            sections.append(
+                f"- Current score: {round(readiness_score)}/100. This is an evidence completeness indicator, not a certification result."
+            )
+
         return sections
 
     @classmethod
@@ -244,11 +276,19 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.append(f"- Total schematic pages reviewed: {analysis['page_count']}")
         sections.append(f"- Major detected subsystems: {', '.join(group['name'] for group in analysis['interface_groups'][:12]) or 'not detected'}")
         sections.append(f"- Power rails detected: {', '.join(rail['net'] for rail in analysis['power_rails'][:12]) or 'not detected'}")
+        sections.append(f"- Evidence readiness score: {analysis['readiness_score']}/100")
         sections.append("### How This Manual Is Organized")
         sections.append("- System overview explains what the board appears to contain based on detected schematic evidence.")
         sections.append("- Functional block guide explains each major block, what it is used for, how it works, how to use it, and how to verify it.")
         sections.append("- Power and bring-up sections define the safest order for first operation.")
         sections.append("- Troubleshooting and maintenance sections convert the schematic analysis into practical service actions.")
+        sections.append("- Optimization and validation sections turn schematic findings into release work packages.")
+
+        sections.append("### Evidence Readiness Interpretation")
+        sections.append("- 0-39 means the engine has too little named evidence for professional release documents.")
+        sections.append("- 40-69 means the generated package is useful for internal review and bring-up planning.")
+        sections.append("- 70-89 means the evidence is strong enough for structured customer-draft preparation after manual review.")
+        sections.append("- 90-100 means the source package is highly complete, but final approval still requires measured lab evidence.")
 
         if analysis["interface_groups"]:
             sections.append("### Functional Block Summary")
@@ -290,6 +330,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("- Confirm power-good, enable, reset, and status LED behavior before attaching high-current or high-speed devices.")
             sections.append("- Add peripherals one group at a time: USB, HDMI/display, Ethernet, wireless/SIM, fan, then field buses.")
             sections.append("- Record measured rail values, current draw, board temperature, and any LED state at each step.")
+
+        if analysis["bringup_sequence"]:
+            sections.append("## Guided Bring-Up Sequence")
+            for index, step in enumerate(analysis["bringup_sequence"], 1):
+                sections.append(f"- Step {index}: {step}")
 
         sections.append("## Operating Procedure")
         sections.append("### Pre-Operation Inspection")
@@ -339,6 +384,27 @@ This local draft was generated from the supplied hardware evidence. It preserves
             for index, item in enumerate(analysis["test_focus"][:14], 1):
                 sections.append(f"| {index} | {item} | Measurement, visual state, or continuity result recorded. |")
 
+        if analysis["validation_matrix"]:
+            sections.append("## Professional Validation Matrix")
+            sections.append("| Subsystem | Objective | Method | Acceptance Criteria |")
+            sections.append("| --- | --- | --- | --- |")
+            for item in analysis["validation_matrix"][:16]:
+                sections.append(
+                    f"| {item.get('subsystem', 'Subsystem')} | {item.get('objective', 'Confirm behavior')} | {item.get('method', 'Test required.')} | {item.get('acceptance', 'Evidence recorded.')} |"
+                )
+
+        if analysis["optimization_actions"]:
+            sections.append("## 200 Percent Optimization Roadmap")
+            sections.append(
+                "The roadmap below is prioritized for turning an extracted schematic package into a professional software-like documentation workflow with stronger release evidence."
+            )
+            sections.append("| Priority | Area | Action | Why It Improves The Engine Output | Evidence Trigger |")
+            sections.append("| --- | --- | --- | --- | --- |")
+            for action in analysis["optimization_actions"][:12]:
+                sections.append(
+                    f"| {action.get('priority', 'P2')} | {action.get('area', 'Engineering')} | {action.get('recommendation', 'Review required.')} | {action.get('why', 'Improves release confidence.')} | {action.get('evidence', 'Detected evidence')} |"
+                )
+
         sections.append("## Troubleshooting Matrix")
         sections.append("| Symptom | Likely Area | First Checks |")
         sections.append("| --- | --- | --- |")
@@ -375,14 +441,33 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "key_parts": [],
             "test_focus": [],
             "risk_flags": [],
+            "optimization_actions": [],
+            "validation_matrix": [],
+            "bringup_sequence": [],
+            "readiness_scores": [],
         }
-        seen = {key: set() for key in ("power_rails", "interface_groups", "key_parts", "test_focus", "risk_flags")}
+        seen = {
+            key: set()
+            for key in (
+                "power_rails",
+                "interface_groups",
+                "key_parts",
+                "test_focus",
+                "risk_flags",
+                "optimization_actions",
+                "validation_matrix",
+                "bringup_sequence",
+            )
+        }
         for manifest in [*profile.schematics, *profile.pcb]:
             source = manifest.get("source_file")
             if source:
                 collected["sources"].append(source)
             collected["page_count"] += int(manifest.get("page_count") or 0)
             analysis = manifest.get("analysis") or {}
+            score = analysis.get("readiness_score")
+            if isinstance(score, (int, float)):
+                collected["readiness_scores"].append(score)
             for rail in analysis.get("power_rails") or []:
                 key = rail.get("net")
                 if key and key not in seen["power_rails"]:
@@ -403,6 +488,22 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     if item not in seen[field]:
                         collected[field].append(item)
                         seen[field].add(item)
+            for action in analysis.get("optimization_actions") or []:
+                key = (action.get("area"), action.get("recommendation"))
+                if key not in seen["optimization_actions"]:
+                    collected["optimization_actions"].append(action)
+                    seen["optimization_actions"].add(key)
+            for item in analysis.get("validation_matrix") or []:
+                key = (item.get("subsystem"), item.get("method"))
+                if key not in seen["validation_matrix"]:
+                    collected["validation_matrix"].append(item)
+                    seen["validation_matrix"].add(key)
+            for item in analysis.get("bringup_sequence") or []:
+                if item not in seen["bringup_sequence"]:
+                    collected["bringup_sequence"].append(item)
+                    seen["bringup_sequence"].add(item)
+        scores = collected.pop("readiness_scores")
+        collected["readiness_score"] = round(sum(scores) / len(scores)) if scores else 0
         return collected
 
     @staticmethod

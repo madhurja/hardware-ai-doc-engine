@@ -1,0 +1,32 @@
+{
+  "name": "Hardware AI Documentation Engine",
+  "short_name": "Doc Engine",
+  "description": "Local browser app for hardware documentation, schematic analysis, and PDF package generation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fa",
+  "theme_color": "#0f766e",
+  "orientation": "any",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/static/assets/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Generate PDFs",
+      "short_name": "Generate",
+      "url": "/#generate"
+    },
+    {
+      "name": "Run App Links",
+      "short_name": "Run",
+      "url": "/#run"
+    }
+  ]
+}

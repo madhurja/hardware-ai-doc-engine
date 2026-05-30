@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import socket
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -26,13 +27,25 @@ UPLOAD_TARGETS = {
 }
 
 
-app = FastAPI(title="Hardware AI Documentation Engine", version="1.0.0")
+app = FastAPI(title="Hardware AI Documentation Engine", version="2.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/manifest.webmanifest")
+def manifest() -> FileResponse:
+    return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/service-worker.js")
+def service_worker() -> FileResponse:
+    response = FileResponse(STATIC_DIR / "service-worker.js", media_type="text/javascript")
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
 
 
 @app.get("/api/status")
@@ -43,6 +56,12 @@ def status() -> dict:
         "analysis": _summarize_profile(profile),
         "outputs": _list_outputs(),
         "document_types": DOCUMENT_TYPES,
+        "runtime": _runtime_links(),
+        "app": {
+            "name": "Hardware AI Documentation Engine",
+            "version": app.version,
+            "mode": "Local browser app",
+        },
     }
 
 
@@ -119,10 +138,25 @@ def _summarize_profile(profile: dict) -> dict:
     groups = []
     risks = []
     key_parts = []
-    seen = {"rails": set(), "groups": set(), "risks": set(), "key_parts": set()}
+    optimization_actions = []
+    validation_matrix = []
+    bringup_sequence = []
+    readiness_scores = []
+    seen = {
+        "rails": set(),
+        "groups": set(),
+        "risks": set(),
+        "key_parts": set(),
+        "optimization_actions": set(),
+        "validation_matrix": set(),
+        "bringup_sequence": set(),
+    }
 
     for manifest in manifests:
         analysis = manifest.get("analysis") or {}
+        score = analysis.get("readiness_score")
+        if isinstance(score, (int, float)):
+            readiness_scores.append(score)
         for rail in analysis.get("power_rails") or []:
             key = rail.get("net")
             if key and key not in seen["rails"]:
@@ -142,12 +176,30 @@ def _summarize_profile(profile: dict) -> dict:
             if key and key not in seen["key_parts"]:
                 key_parts.append(part)
                 seen["key_parts"].add(key)
+        for action in analysis.get("optimization_actions") or []:
+            key = (action.get("area"), action.get("recommendation"))
+            if key not in seen["optimization_actions"]:
+                optimization_actions.append(action)
+                seen["optimization_actions"].add(key)
+        for item in analysis.get("validation_matrix") or []:
+            key = (item.get("subsystem"), item.get("method"))
+            if key not in seen["validation_matrix"]:
+                validation_matrix.append(item)
+                seen["validation_matrix"].add(key)
+        for step in analysis.get("bringup_sequence") or []:
+            if step not in seen["bringup_sequence"]:
+                bringup_sequence.append(step)
+                seen["bringup_sequence"].add(step)
 
     return {
         "power_rails": rails[:18],
         "interface_groups": groups[:16],
         "risk_flags": risks[:8],
         "key_parts": key_parts[:18],
+        "optimization_actions": optimization_actions[:10],
+        "validation_matrix": validation_matrix[:12],
+        "bringup_sequence": bringup_sequence[:10],
+        "readiness_score": round(sum(readiness_scores) / len(readiness_scores)) if readiness_scores else 0,
     }
 
 
@@ -173,3 +225,23 @@ def _safe_filename(filename: str) -> str:
         raise HTTPException(status_code=400, detail="Invalid file name.")
     return name[:120]
 
+
+def _runtime_links() -> dict:
+    local_url = "http://127.0.0.1:8000"
+    lan_urls = []
+    try:
+        hostnames = {socket.gethostname(), socket.getfqdn()}
+        for hostname in hostnames:
+            for ip_address in socket.gethostbyname_ex(hostname)[2]:
+                if ip_address and not ip_address.startswith("127.") and ":" not in ip_address:
+                    lan_urls.append(f"http://{ip_address}:8000")
+    except OSError:
+        pass
+
+    unique_lan_urls = list(dict.fromkeys(lan_urls))
+    return {
+        "local_url": local_url,
+        "lan_urls": unique_lan_urls[:4],
+        "windows_command": ".\\run_windows.ps1",
+        "android_note": "Run the Windows host command, keep the PC and phone on the same Wi-Fi, then open the LAN URL in Android Chrome.",
+    }
