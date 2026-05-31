@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from core.audit import QualityAuditEngine
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
 from core.document_types import resolve_document_type
@@ -54,6 +55,9 @@ class EngineTests(unittest.TestCase):
             self.assertIn("<title>Test Report</title>", html)
             self.assertIn("<h2>Scope</h2>", html)
             self.assertIn("<li>Item one</li>", html)
+            unsafe_html = PDFExporter(css).convert_markdown_to_html("Safe", "## Scope\n<script>alert(1)</script>")
+            self.assertNotIn("<script>", unsafe_html)
+            self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", unsafe_html)
 
     def test_generator_without_api_key_returns_local_draft(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -78,6 +82,27 @@ class EngineTests(unittest.TestCase):
 
             self.assertIn("User Manual", draft)
             self.assertIn("LED", draft)
+
+    def test_local_only_api_key_override_ignores_environment_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            prompts = Path(temp_dir) / "prompts.json"
+            prompts.write_text(json.dumps({"user_manual": "Prompt"}), encoding="utf-8")
+            old_key = os.environ.get("OPENAI_API_KEY")
+            os.environ["OPENAI_API_KEY"] = "should-not-be-used"
+            try:
+                engine = DocGenerationEngine(prompts_path=prompts, api_key="")
+                self.assertEqual(engine.api_key, "")
+                draft = engine.generate_document(
+                    "user_manual",
+                    {"detected_pins": [], "peripherals": [], "schematics": [], "pcb": [], "metadata": {}},
+                )
+            finally:
+                if old_key is None:
+                    os.environ.pop("OPENAI_API_KEY", None)
+                else:
+                    os.environ["OPENAI_API_KEY"] = old_key
+
+            self.assertIn("User Manual", draft)
 
     def test_user_manual_includes_detailed_operator_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -247,6 +272,22 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(summary["average_readiness_score"], 81)
             self.assertTrue(summary["adaptive_hints"])
             self.assertTrue(summary["recurring_gaps"])
+
+    def test_quality_audit_flags_missing_release_evidence(self) -> None:
+        audit = QualityAuditEngine().build_audit(
+            {"metadata": {"schematic_files_scanned": 1, "code_files_scanned": 0, "pcb_files_scanned": 0}},
+            {
+                "readiness_score": 82,
+                "power_rails": [{"net": "3V3"}],
+                "interface_groups": [{"name": "USB"}],
+                "risk_flags": ["High-speed differential routing requires impedance review."],
+                "skill_review_gates": [{"priority": "P1", "title": "Signal Integrity Gate"}],
+            },
+        )
+
+        self.assertEqual(audit["release_status"], "Engineering review required")
+        self.assertGreaterEqual(audit["counts"]["major"], 2)
+        self.assertTrue(audit["next_actions"])
 
 
 if __name__ == "__main__":

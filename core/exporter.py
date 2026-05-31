@@ -258,7 +258,8 @@ class PDFExporter:
         try:
             import markdown
 
-            return markdown.markdown(markdown_content, extensions=["tables", "fenced_code"])
+            safe_markdown = html.escape(markdown_content, quote=False)
+            return markdown.markdown(safe_markdown, extensions=["tables", "fenced_code"])
         except Exception:
             return self._minimal_markdown_to_html(markdown_content)
 

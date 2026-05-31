@@ -1,7 +1,10 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+import app as app_module
 from app import app
 
 
@@ -39,6 +42,39 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("skill_review_gates", payload["analysis"])
         self.assertIn("adaptive_improvement", payload)
         self.assertIn("runs_total", payload["adaptive_improvement"])
+        self.assertIn("quality_audit", payload)
+        self.assertIn("release_status", payload["quality_audit"])
+
+    def test_upload_rejects_unsupported_file_type(self) -> None:
+        response = self.client.post(
+            "/api/upload",
+            data={"target": "code"},
+            files=[("files", ("malware.exe", b"nope", "application/octet-stream"))],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported file type", response.json()["detail"])
+
+    def test_upload_streams_and_preserves_duplicate_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_targets = app_module.UPLOAD_TARGETS.copy()
+            try:
+                app_module.UPLOAD_TARGETS["code"] = Path(temp_dir)
+                response = self.client.post(
+                    "/api/upload",
+                    data={"target": "code"},
+                    files=[
+                        ("files", ("main.c", b"#define LED GPIO_PIN_13", "text/plain")),
+                        ("files", ("main.c", b"#define RELAY GPIO_PIN_5", "text/plain")),
+                    ],
+                )
+            finally:
+                app_module.UPLOAD_TARGETS.clear()
+                app_module.UPLOAD_TARGETS.update(original_targets)
+
+            self.assertEqual(response.status_code, 200)
+            saved_names = [item["name"] for item in response.json()["saved"]]
+            self.assertEqual(saved_names, ["main.c", "main_2.c"])
 
 
 if __name__ == "__main__":

@@ -165,11 +165,13 @@ function dashboardScreen() {
   const metadata = data.metadata || {};
   const analysis = data.analysis || {};
   const improvement = data.adaptive_improvement || {};
+  const audit = data.quality_audit || {};
   const outputs = data.outputs || [];
   const cards = [
     ["Schematics", metadata.schematic_files_scanned || 0, "PDF evidence scanned"],
     ["Rails", (analysis.power_rails || []).length, "Power domains found"],
     ["Subsystems", (analysis.interface_groups || []).length, "Functional blocks"],
+    ["Open Flaws", flawCount(audit), audit.release_status || "Audit status"],
     ["Learning Runs", improvement.runs_total || 0, "Adaptive memory"],
   ];
 
@@ -192,12 +194,18 @@ function dashboardScreen() {
     <section class="content-grid">
       ${analysisPanel("Power Rails", analysis.power_rails || [], (rail) => `<strong>${escapeHtml(rail.net)}</strong><span>${escapeHtml(rail.role)}</span>`)}
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
+      ${qualityAuditPanel(audit)}
       ${skillGatePanel(analysis.skill_review_gates || [])}
       ${optimizationPanel(analysis.optimization_actions || [])}
       ${validationPanel(analysis.validation_matrix || [])}
       ${adaptivePanel(improvement)}
     </section>
   `;
+}
+
+function flawCount(audit) {
+  const counts = audit.counts || {};
+  return (counts.blocker || 0) + (counts.major || 0) + (counts.minor || 0);
 }
 
 function metricCard([label, value, note]) {
@@ -248,6 +256,39 @@ function validationPanel(items) {
     `).join("")
     : `<div class="empty-state">Validation matrix appears after analysis.</div>`;
   return `<section class="panel wide-panel"><h3>Validation Matrix</h3><div class="stack-list">${body}</div></section>`;
+}
+
+function qualityAuditPanel(audit) {
+  const flaws = audit.flaws || [];
+  const counts = audit.counts || {};
+  const body = flaws.length
+    ? flaws.slice(0, 7).map((flaw) => `
+      <div class="priority-row">
+        <span class="priority ${severityClass(flaw.severity)}">${escapeHtml(flaw.severity || "minor")}</span>
+        <div>
+          <strong>${escapeHtml(flaw.area)} - ${escapeHtml(flaw.flaw)}</strong>
+          <span>${escapeHtml(flaw.fix)}</span>
+        </div>
+      </div>
+    `).join("")
+    : `<div class="empty-state">No open evidence flaws were detected from the current inputs.</div>`;
+  return `
+    <section class="panel wide-panel">
+      <h3>Flaw Radar</h3>
+      <div class="quality-strip">
+        <span>${escapeHtml(audit.release_status || "Not audited")}</span>
+        <strong>${escapeHtml(audit.quality_score || 0)}/100</strong>
+        <small>${escapeHtml(counts.blocker || 0)} blocker, ${escapeHtml(counts.major || 0)} major, ${escapeHtml(counts.minor || 0)} minor</small>
+      </div>
+      <div class="stack-list">${body}</div>
+    </section>
+  `;
+}
+
+function severityClass(severity) {
+  if (severity === "blocker") return "P1";
+  if (severity === "major") return "P2";
+  return "P3";
 }
 
 function adaptivePanel(improvement) {
@@ -323,6 +364,7 @@ function generateScreen() {
           ${qualityItem("Validation checks", (state.status.analysis?.validation_matrix || []).length)}
           ${qualityItem("Bring-up steps", (state.status.analysis?.bringup_sequence || []).length)}
           ${qualityItem("Skill-pack gates", (state.status.analysis?.skill_review_gates || []).length)}
+          ${qualityItem("Open flaws", flawCount(state.status.quality_audit || {}))}
           ${qualityItem("Learning runs", state.status.adaptive_improvement?.runs_total || 0)}
         </div>
       </section>

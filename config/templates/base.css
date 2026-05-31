@@ -13,6 +13,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 10.5pt;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .top-bar {
@@ -80,8 +81,19 @@ pre {
 
 table {
   border-collapse: collapse;
+  font-size: 8.6pt;
   margin: 5mm 0;
+  table-layout: fixed;
   width: 100%;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 th {
@@ -92,7 +104,8 @@ th {
 
 th, td {
   border: 1px solid #cbd5e1;
+  overflow-wrap: anywhere;
   padding: 2.5mm;
   vertical-align: top;
+  word-break: break-word;
 }
-

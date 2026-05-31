@@ -34,8 +34,10 @@ class DetectedPeripheral:
 class HardwareManifestParser:
     """Builds a structured hardware profile from local firmware and manifests."""
 
-    CODE_EXTENSIONS = {".c", ".h", ".cpp", ".ino"}
+    CODE_EXTENSIONS = {".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".ino"}
     MANIFEST_EXTENSIONS = {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"}
+    MAX_SCAN_FILES = 250
+    MAX_SCAN_BYTES = 100 * 1024 * 1024
 
     PIN_PATTERN = re.compile(r"#define\s+(\w+)\s+(GPIO_PIN_\d+|PA_\d+|PB_\d+|\d+)")
     SERIAL_PATTERN = re.compile(r"\bSerial(?:\d*)\.begin\((\d+)\)")
@@ -676,11 +678,26 @@ class HardwareManifestParser:
         files = [
             path
             for path in directory.rglob("*")
-            if path.is_file() and path.suffix.lower() in extensions and not path.name.startswith(".")
+            if path.is_file()
+            and path.suffix.lower() in extensions
+            and not path.name.startswith(".")
+            and self._is_safe_scan_size(path)
         ]
         if not files:
             LOGGER.debug("No supported files found in %s", directory)
-        return sorted(files)
+        if len(files) > self.MAX_SCAN_FILES:
+            LOGGER.warning("Too many supported files in %s; scanning first %s.", directory, self.MAX_SCAN_FILES)
+        return sorted(files)[: self.MAX_SCAN_FILES]
+
+    def _is_safe_scan_size(self, path: Path) -> bool:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return False
+        if size > self.MAX_SCAN_BYTES:
+            LOGGER.warning("Skipping oversized input file %s (%s bytes).", path, size)
+            return False
+        return True
 
     @staticmethod
     def _strip_namespace(tag: str) -> str:

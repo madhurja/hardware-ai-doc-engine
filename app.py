@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from core.audit import QualityAuditEngine
 from core.document_types import DOCUMENT_TYPES, resolve_document_type
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
@@ -21,10 +22,17 @@ ROOT = Path(__file__).resolve().parent
 INPUT_ROOT = ROOT / "input_drop"
 OUTPUT_DIR = ROOT / "output_packages"
 STATIC_DIR = ROOT / "static"
+MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 UPLOAD_TARGETS = {
     "code": INPUT_ROOT / "code",
     "schematics": INPUT_ROOT / "schematics",
     "pcb": INPUT_ROOT / "pcb",
+}
+ALLOWED_UPLOAD_SUFFIXES = {
+    "code": {".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".ino"},
+    "schematics": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"},
+    "pcb": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"},
 }
 
 
@@ -52,9 +60,11 @@ def service_worker() -> FileResponse:
 @app.get("/api/status")
 def status() -> dict:
     profile = _build_profile()
+    analysis = _summarize_profile(profile)
     return {
         "metadata": profile["metadata"],
-        "analysis": _summarize_profile(profile),
+        "analysis": analysis,
+        "quality_audit": QualityAuditEngine().build_audit(profile, analysis),
         "outputs": _list_outputs(),
         "document_types": DOCUMENT_TYPES,
         "adaptive_improvement": ImprovementMemory().summary(),
@@ -75,15 +85,17 @@ async def upload_files(
     directory = UPLOAD_TARGETS.get(target)
     if directory is None:
         raise HTTPException(status_code=400, detail="Unsupported upload target.")
+    if not files:
+        raise HTTPException(status_code=400, detail="Choose at least one file to upload.")
 
     directory.mkdir(parents=True, exist_ok=True)
     saved = []
     for upload in files:
         filename = _safe_filename(upload.filename or "upload.bin")
-        destination = directory / filename
-        content = await upload.read()
-        destination.write_bytes(content)
-        saved.append({"name": filename, "size": len(content), "target": target})
+        _validate_upload_suffix(target, filename)
+        destination = _unique_destination(directory, filename)
+        size = await _write_upload_stream(upload, destination)
+        saved.append({"name": destination.name, "size": size, "target": target})
     return {"saved": saved, "status": "uploaded"}
 
 
@@ -111,10 +123,12 @@ def generate_documents(
         exporter.export_pdf(title, markdown, output)
         created.append(_output_summary(output))
 
+    analysis = _summarize_profile(profile)
     adaptive_improvement = ImprovementMemory().record_generation(profile, targets, created, run_label="app_generation")
     return {
         "created": created,
-        "analysis": _summarize_profile(profile),
+        "analysis": analysis,
+        "quality_audit": QualityAuditEngine().build_audit(profile, analysis),
         "adaptive_improvement": adaptive_improvement,
     }
 
@@ -241,6 +255,52 @@ def _safe_filename(filename: str) -> str:
     if not name:
         raise HTTPException(status_code=400, detail="Invalid file name.")
     return name[:120]
+
+
+def _validate_upload_suffix(target: str, filename: str) -> None:
+    suffix = Path(filename).suffix.lower()
+    allowed = ALLOWED_UPLOAD_SUFFIXES[target]
+    if suffix not in allowed:
+        supported = ", ".join(sorted(allowed))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type for {target}. Supported types: {supported}",
+        )
+
+
+def _unique_destination(directory: Path, filename: str) -> Path:
+    candidate = directory / filename
+    if not candidate.exists():
+        return candidate
+
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    for index in range(2, 1000):
+        candidate = directory / f"{stem}_{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise HTTPException(status_code=409, detail="Too many duplicate file names in the intake folder.")
+
+
+async def _write_upload_stream(upload: UploadFile, destination: Path) -> int:
+    total = 0
+    try:
+        with destination.open("wb") as handle:
+            while True:
+                chunk = await upload.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Upload is too large. Maximum file size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+                    )
+                handle.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return total
 
 
 def _runtime_links() -> dict:

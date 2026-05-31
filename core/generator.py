@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from core.audit import QualityAuditEngine
 from core.improvement import ImprovementMemory
 
 
@@ -28,7 +29,7 @@ class DocGenerationEngine:
         self._load_env_file()
         self.prompts_path = Path(prompts_path)
         self.prompts = self._load_prompts()
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = os.getenv("OPENAI_API_KEY") if api_key is None else api_key
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     def generate_document(self, document_type: str, hardware_profile: dict[str, Any]) -> str:
@@ -85,12 +86,12 @@ class DocGenerationEngine:
 
     def _generate_local_draft(self, document_type: str, profile: HardwareProfile) -> str:
         pin_rows = "\n".join(
-            f"| {pin.get('signal_name', 'unknown')} | {pin.get('physical_pin', 'unknown')} | {pin.get('source_file', '')} |"
+            f"| {self._md_cell(pin.get('signal_name', 'unknown'))} | {self._md_cell(pin.get('physical_pin', 'unknown'))} | {self._md_cell(pin.get('source_file', ''))} |"
             for pin in profile.detected_pins
         ) or "| No pin mappings detected | Not provided | Not provided |"
 
         peripheral_rows = "\n".join(
-            f"| {item.get('name', 'unknown')} | {item.get('configuration', 'not provided')} | {item.get('source_file', '')} |"
+            f"| {self._md_cell(item.get('name', 'unknown'))} | {self._md_cell(item.get('configuration', 'not provided'))} | {self._md_cell(item.get('source_file', ''))} |"
             for item in profile.peripherals
         ) or "| No peripherals detected | Not provided | Not provided |"
 
@@ -99,6 +100,7 @@ class DocGenerationEngine:
         guidance = self._document_type_guidance(document_type)
         detailed_sections = self._format_user_manual_sections(profile) if document_type == "user_manual" else ""
         adaptive_notes = self._format_adaptive_notes()
+        quality_audit = self._format_quality_audit(profile)
 
         return f"""# {document_type.replace('_', ' ').title()}
 
@@ -113,6 +115,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
 - Detected peripherals: {profile.metadata.get('peripheral_count', len(profile.peripherals))}
 
 {adaptive_notes}
+
+{quality_audit}
 
 ## Detected Pin Map
 | Signal | Physical Pin | Source |
@@ -173,7 +177,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 sections.append("| --- | --- |")
                 for component in components[:28]:
                     sections.append(
-                        f"| {component.get('reference', 'unknown')} | {component.get('value_or_part', 'not provided')} |"
+                        f"| {DocGenerationEngine._md_cell(component.get('reference', 'unknown'))} | {DocGenerationEngine._md_cell(component.get('value_or_part', 'not provided'))} |"
                     )
 
             pages = manifest.get("pages") or []
@@ -182,8 +186,10 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 sections.append("| Page | Inferred Title | Extracted Evidence |")
                 sections.append("| --- | --- | --- |")
                 for page in pages[:12]:
-                    excerpt = str(page.get("text_excerpt", "")).replace("|", "/")[:180]
-                    sections.append(f"| {page.get('page')} | {page.get('title', 'Untitled')} | {excerpt} |")
+                    excerpt = DocGenerationEngine._md_cell(page.get("text_excerpt", ""))[:180]
+                    sections.append(
+                        f"| {DocGenerationEngine._md_cell(page.get('page'))} | {DocGenerationEngine._md_cell(page.get('title', 'Untitled'))} | {excerpt} |"
+                    )
 
         return "\n".join(sections)
 
@@ -204,6 +210,39 @@ This local draft was generated from the supplied hardware evidence. It preserves
         return "\n".join(sections)
 
     @staticmethod
+    def _format_quality_audit(profile: HardwareProfile) -> str:
+        analysis = DocGenerationEngine._collect_analysis(profile)
+        audit = QualityAuditEngine().build_audit(profile.model_dump(), analysis)
+        sections = [
+            "## Evidence Quality And Flaw Audit",
+            f"- Release status: {audit['release_status']}",
+            f"- Quality score: {audit['quality_score']}/100",
+            f"- Open blockers: {audit['counts']['blocker']}",
+            f"- Open major flaws: {audit['counts']['major']}",
+            f"- Open minor flaws: {audit['counts']['minor']}",
+        ]
+        flaws = audit.get("flaws", [])
+        if flaws:
+            sections.append("| Severity | Area | Flaw | Required Fix |")
+            sections.append("| --- | --- | --- | --- |")
+            for flaw in flaws[:10]:
+                sections.append(
+                    "| "
+                    + " | ".join(
+                        DocGenerationEngine._md_cell(flaw.get(field, ""))
+                        for field in ("severity", "area", "flaw", "fix")
+                    )
+                    + " |"
+                )
+        else:
+            sections.append("- No release-blocking evidence flaws were found from the current local inputs.")
+        return "\n".join(sections)
+
+    @staticmethod
+    def _md_cell(value: Any) -> str:
+        return str(value).replace("|", "/").replace("\r", " ").replace("\n", " ").strip()
+
+    @staticmethod
     def _format_analysis(analysis: dict[str, Any]) -> list[str]:
         sections: list[str] = []
 
@@ -213,7 +252,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| Net | Inferred Role |")
             sections.append("| --- | --- |")
             for rail in power_rails[:18]:
-                sections.append(f"| {rail.get('net', 'unknown')} | {rail.get('role', 'Power rail')} |")
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(rail.get('net', 'unknown'))} | {DocGenerationEngine._md_cell(rail.get('role', 'Power rail'))} |"
+                )
 
         interface_groups = analysis.get("interface_groups") or []
         if interface_groups:
@@ -222,7 +263,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- |")
             for group in interface_groups[:14]:
                 evidence = ", ".join(group.get("evidence", []))
-                sections.append(f"| {group.get('name', 'Unknown')} | {evidence} | {group.get('confidence', 0)}% |")
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(group.get('name', 'Unknown'))} | {DocGenerationEngine._md_cell(evidence)} | {DocGenerationEngine._md_cell(group.get('confidence', 0))}% |"
+                )
 
         component_counts = analysis.get("component_counts") or {}
         if component_counts:
@@ -230,7 +273,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| Family | Count |")
             sections.append("| --- | --- |")
             for family, count in component_counts.items():
-                sections.append(f"| {family.replace('_', ' ').title()} | {count} |")
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(family.replace('_', ' ').title())} | {DocGenerationEngine._md_cell(count)} |"
+                )
 
         key_parts = analysis.get("key_parts") or []
         if key_parts:
@@ -238,7 +283,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| Reference | Candidate Part / Value |")
             sections.append("| --- | --- |")
             for part in key_parts[:20]:
-                sections.append(f"| {part.get('reference', 'unknown')} | {part.get('value_or_part', 'not provided')} |")
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(part.get('reference', 'unknown'))} | {DocGenerationEngine._md_cell(part.get('value_or_part', 'not provided'))} |"
+                )
 
         test_focus = analysis.get("test_focus") or []
         if test_focus:
@@ -257,7 +304,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- |")
             for action in optimization_actions[:8]:
                 sections.append(
-                    f"| {action.get('priority', 'P2')} | {action.get('area', 'Engineering')} | {action.get('recommendation', 'Review required.')} |"
+                    f"| {DocGenerationEngine._md_cell(action.get('priority', 'P2'))} | {DocGenerationEngine._md_cell(action.get('area', 'Engineering'))} | {DocGenerationEngine._md_cell(action.get('recommendation', 'Review required.'))} |"
                 )
 
         validation_matrix = analysis.get("validation_matrix") or []
@@ -267,7 +314,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- | --- |")
             for item in validation_matrix[:8]:
                 sections.append(
-                    f"| {item.get('subsystem', 'Subsystem')} | {item.get('objective', 'Confirm behavior')} | {item.get('method', 'Test required.')} | {item.get('acceptance', 'Evidence recorded.')} |"
+                    f"| {DocGenerationEngine._md_cell(item.get('subsystem', 'Subsystem'))} | {DocGenerationEngine._md_cell(item.get('objective', 'Confirm behavior'))} | {DocGenerationEngine._md_cell(item.get('method', 'Test required.'))} | {DocGenerationEngine._md_cell(item.get('acceptance', 'Evidence recorded.'))} |"
                 )
 
         bringup_sequence = analysis.get("bringup_sequence") or []
@@ -289,7 +336,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- | --- |")
             for gate in skill_review_gates[:8]:
                 sections.append(
-                    f"| {gate.get('priority', 'P2')} | {gate.get('title', 'Review Gate')} | {gate.get('source_skill', 'skill-pack')} | {gate.get('evidence', 'project evidence present')} |"
+                    f"| {DocGenerationEngine._md_cell(gate.get('priority', 'P2'))} | {DocGenerationEngine._md_cell(gate.get('title', 'Review Gate'))} | {DocGenerationEngine._md_cell(gate.get('source_skill', 'skill-pack'))} | {DocGenerationEngine._md_cell(gate.get('evidence', 'project evidence present'))} |"
                 )
 
         return sections
@@ -330,7 +377,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- | --- |")
             for gate in analysis["skill_review_gates"][:14]:
                 sections.append(
-                    f"| {gate.get('priority', 'P2')} | {gate.get('title', 'Review Gate')} | {gate.get('source_skill', 'skill-pack')} | {gate.get('evidence', 'project evidence present')} |"
+                    f"| {cls._md_cell(gate.get('priority', 'P2'))} | {cls._md_cell(gate.get('title', 'Review Gate'))} | {cls._md_cell(gate.get('source_skill', 'skill-pack'))} | {cls._md_cell(gate.get('evidence', 'project evidence present'))} |"
                 )
             sections.append("### Skill Gate Action Checklist")
             for gate in analysis["skill_review_gates"][:8]:
@@ -346,7 +393,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             for group in analysis["interface_groups"][:14]:
                 evidence = ", ".join(group.get("evidence", []))
                 sections.append(
-                    f"| {group.get('name', 'Unknown')} | {evidence} | {cls._manual_note_for_group(group.get('name', 'Unknown'))} |"
+                    f"| {cls._md_cell(group.get('name', 'Unknown'))} | {cls._md_cell(evidence)} | {cls._md_cell(cls._manual_note_for_group(group.get('name', 'Unknown')))} |"
                 )
 
         if analysis["interface_groups"]:
@@ -370,7 +417,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- |")
             for rail in analysis["power_rails"][:16]:
                 sections.append(
-                    f"| {rail.get('net', 'unknown')} | {rail.get('role', 'Power rail')} | Confirm voltage, ramp stability, no excessive current draw, and no local heating. |"
+                    f"| {cls._md_cell(rail.get('net', 'unknown'))} | {cls._md_cell(rail.get('role', 'Power rail'))} | Confirm voltage, ramp stability, no excessive current draw, and no local heating. |"
                 )
             sections.append("### Recommended Power-Up Sequence")
             sections.append("- Inspect the board for assembly damage, solder bridges, missing jumpers, and connector contamination.")
@@ -408,7 +455,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             for group in analysis["interface_groups"][:14]:
                 name = group.get("name", "Unknown")
                 sections.append(
-                    f"| {name} | {cls._operator_note_for_group(name)} | {cls._validation_note_for_group(name)} |"
+                    f"| {cls._md_cell(name)} | {cls._md_cell(cls._operator_note_for_group(name))} | {cls._md_cell(cls._validation_note_for_group(name))} |"
                 )
 
         sections.append("## Subsystem Service Notes")
@@ -424,14 +471,18 @@ This local draft was generated from the supplied hardware evidence. It preserves
             for part in analysis["key_parts"][:24]:
                 reference = part.get("reference", "unknown")
                 value = part.get("value_or_part", "not provided")
-                sections.append(f"| {reference} | {value} | {cls._key_part_note(reference, value)} |")
+                sections.append(
+                    f"| {cls._md_cell(reference)} | {cls._md_cell(value)} | {cls._md_cell(cls._key_part_note(reference, value))} |"
+                )
 
         if analysis["test_focus"]:
             sections.append("## Commissioning Checklist")
             sections.append("| Step | Check | Acceptance Evidence |")
             sections.append("| --- | --- | --- |")
             for index, item in enumerate(analysis["test_focus"][:14], 1):
-                sections.append(f"| {index} | {item} | Measurement, visual state, or continuity result recorded. |")
+                sections.append(
+                    f"| {index} | {cls._md_cell(item)} | Measurement, visual state, or continuity result recorded. |"
+                )
 
         if analysis["validation_matrix"]:
             sections.append("## Professional Validation Matrix")
@@ -439,7 +490,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- | --- |")
             for item in analysis["validation_matrix"][:16]:
                 sections.append(
-                    f"| {item.get('subsystem', 'Subsystem')} | {item.get('objective', 'Confirm behavior')} | {item.get('method', 'Test required.')} | {item.get('acceptance', 'Evidence recorded.')} |"
+                    f"| {cls._md_cell(item.get('subsystem', 'Subsystem'))} | {cls._md_cell(item.get('objective', 'Confirm behavior'))} | {cls._md_cell(item.get('method', 'Test required.'))} | {cls._md_cell(item.get('acceptance', 'Evidence recorded.'))} |"
                 )
 
         if analysis["optimization_actions"]:
@@ -451,14 +502,14 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("| --- | --- | --- | --- | --- |")
             for action in analysis["optimization_actions"][:12]:
                 sections.append(
-                    f"| {action.get('priority', 'P2')} | {action.get('area', 'Engineering')} | {action.get('recommendation', 'Review required.')} | {action.get('why', 'Improves release confidence.')} | {action.get('evidence', 'Detected evidence')} |"
+                    f"| {cls._md_cell(action.get('priority', 'P2'))} | {cls._md_cell(action.get('area', 'Engineering'))} | {cls._md_cell(action.get('recommendation', 'Review required.'))} | {cls._md_cell(action.get('why', 'Improves release confidence.'))} | {cls._md_cell(action.get('evidence', 'Detected evidence'))} |"
                 )
 
         sections.append("## Troubleshooting Matrix")
         sections.append("| Symptom | Likely Area | First Checks |")
         sections.append("| --- | --- | --- |")
         for symptom, area, checks in cls._troubleshooting_rows(analysis):
-            sections.append(f"| {symptom} | {area} | {checks} |")
+            sections.append(f"| {cls._md_cell(symptom)} | {cls._md_cell(area)} | {cls._md_cell(checks)} |")
 
         if analysis["risk_flags"]:
             sections.append("## Handling And Engineering Warnings")

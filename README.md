@@ -83,6 +83,7 @@ The local engine now produces a stronger release-planning profile:
 - Risk flags for high-speed, wireless, field wiring, ESD, fan, and mixed-voltage sections
 - Integrated schematic/PCB skill-pack review gates
 - Adaptive improvement memory after every generation/test package
+- Flaw audit with blockers, major gaps, release status, and next actions
 
 These fields appear in the app and inside generated manuals/test documents.
 
@@ -97,6 +98,14 @@ See [docs/SKILL_PACK_INTEGRATION.md](docs/SKILL_PACK_INTEGRATION.md).
 After every document or test-package generation, the engine records local quality signals and uses them in future runs. This makes the tool more precise over time while staying safe and deterministic.
 
 See [docs/ADAPTIVE_IMPROVEMENT.md](docs/ADAPTIVE_IMPROVEMENT.md).
+
+## Quality And Flaw Audit
+
+The dashboard and generated documents now include a flaw radar that flags missing evidence, high-speed routing gaps, wireless/SIM release gaps, field-bus robustness items, and open review gates.
+
+See [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md).
+
+For the latest software audit pass, see [docs/PROJECT_AUDIT_REPORT.md](docs/PROJECT_AUDIT_REPORT.md).
 
 ## Windows And Android App Mode
 
