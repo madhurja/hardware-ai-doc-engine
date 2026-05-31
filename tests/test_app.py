@@ -44,6 +44,17 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("runs_total", payload["adaptive_improvement"])
         self.assertIn("quality_audit", payload)
         self.assertIn("release_status", payload["quality_audit"])
+        self.assertIn("plugins", payload)
+        self.assertIn("summary", payload["plugins"])
+
+    def test_plugins_endpoint_returns_catalog(self) -> None:
+        response = self.client.get("/api/plugins")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("plugins", payload)
+        self.assertIn("research_pack", payload)
+        self.assertGreaterEqual(payload["summary"]["total"], 5)
 
     def test_upload_rejects_unsupported_file_type(self) -> None:
         response = self.client.post(

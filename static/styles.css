@@ -101,7 +101,10 @@ svg {
 .metric-card small,
 .quality-item span,
 .output-card small,
-.link-card span {
+.link-card span,
+.plugin-card p,
+.plugin-status,
+.research-row span {
   color: var(--muted);
 }
 
@@ -396,7 +399,8 @@ p {
 .stack-list,
 .quality-list,
 .step-list,
-.output-grid {
+.output-grid,
+.plugin-list {
   display: grid;
   gap: 10px;
 }
@@ -589,6 +593,88 @@ input[type="file"] {
   min-width: 0;
 }
 
+.plugin-hero {
+  align-items: center;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+}
+
+.plugin-hero h2 {
+  font-size: 1.55rem;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.plugin-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.plugin-card {
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.plugin-card p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.plugin-card-head {
+  display: grid;
+  gap: 4px;
+}
+
+.plugin-card-head strong,
+.research-row strong {
+  overflow-wrap: anywhere;
+}
+
+.plugin-mode {
+  color: var(--teal);
+  font-size: 0.75rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.plugin-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.plugin-status span,
+.plugin-status small {
+  background: #f1f5f9;
+  border: 1px solid var(--line);
+  padding: 4px 7px;
+}
+
+.plugin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plugin-actions a,
+.research-row > a {
+  background: #e7f5f3;
+  color: var(--teal);
+  font-weight: 800;
+  padding: 7px 9px;
+  text-decoration: none;
+}
+
+.research-row {
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
 .command-box code {
   font-family: "Cascadia Code", Consolas, monospace;
 }
@@ -686,7 +772,7 @@ input[type="file"] {
     box-shadow: 0 -12px 30px rgba(20, 32, 51, 0.12);
     display: grid;
     gap: 4px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     left: 0;
     padding: 8px;
     position: fixed;
@@ -717,6 +803,7 @@ input[type="file"] {
 @media (max-width: 900px) {
   .topbar,
   .hero-panel,
+  .plugin-hero,
   .content-grid,
   .screen-grid,
   .metric-grid {

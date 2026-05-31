@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from core.audit import QualityAuditEngine
 from core.improvement import ImprovementMemory
+from core.plugins import PluginRegistry
 
 
 class HardwareProfile(BaseModel):
@@ -101,6 +102,7 @@ class DocGenerationEngine:
         detailed_sections = self._format_user_manual_sections(profile) if document_type == "user_manual" else ""
         adaptive_notes = self._format_adaptive_notes()
         quality_audit = self._format_quality_audit(profile)
+        plugin_notes = self._format_plugin_notes(profile)
 
         return f"""# {document_type.replace('_', ' ').title()}
 
@@ -117,6 +119,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
 {adaptive_notes}
 
 {quality_audit}
+
+{plugin_notes}
 
 ## Detected Pin Map
 | Signal | Physical Pin | Source |
@@ -236,6 +240,29 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 )
         else:
             sections.append("- No release-blocking evidence flaws were found from the current local inputs.")
+        return "\n".join(sections)
+
+    @staticmethod
+    def _format_plugin_notes(profile: HardwareProfile) -> str:
+        analysis = DocGenerationEngine._collect_analysis(profile)
+        catalog = PluginRegistry().build_catalog(profile.model_dump(), analysis)
+        summary = catalog.get("summary", {})
+        sections = [
+            "## Internet And Plugin Research Pack",
+            f"- Installed plugin definitions: {summary.get('total', 0)}",
+            f"- Internet-enabled plugins: {summary.get('internet_enabled', 0)}",
+            f"- API-ready plugins: {summary.get('api_ready', 0)}",
+            "- Internet actions are convenience links for research and evidence gathering; they do not replace datasheet, CAD, lab, or compliance review.",
+        ]
+        parts = catalog.get("research_pack", {}).get("parts", [])
+        if parts:
+            sections.append("| Part / Query | Research Links |")
+            sections.append("| --- | --- |")
+            for part in parts[:8]:
+                links = ", ".join(f"{link['label']}: {link['url']}" for link in part.get("links", [])[:3])
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(part.get('query', 'unknown'))} | {DocGenerationEngine._md_cell(links)} |"
+                )
         return "\n".join(sections)
 
     @staticmethod

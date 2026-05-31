@@ -10,6 +10,7 @@ from core.generator import DocGenerationEngine
 from core.document_types import resolve_document_type
 from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
+from core.plugins import PluginRegistry
 from core.skill_rules import SkillRuleEngine
 
 
@@ -288,6 +289,22 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(audit["release_status"], "Engineering review required")
         self.assertGreaterEqual(audit["counts"]["major"], 2)
         self.assertTrue(audit["next_actions"])
+
+    def test_plugin_registry_builds_internet_research_pack(self) -> None:
+        catalog = PluginRegistry().build_catalog(
+            {"schematics": [], "pcb": [], "metadata": {}},
+            {
+                "key_parts": [{"reference": "U1", "value_or_part": "STM32F407VGT6"}],
+                "interface_groups": [{"name": "USB"}],
+                "skill_review_gates": [{"title": "Signal Integrity Gate"}],
+            },
+        )
+
+        self.assertGreaterEqual(catalog["summary"]["total"], 5)
+        self.assertGreater(catalog["summary"]["internet_enabled"], 0)
+        part_links = catalog["research_pack"]["parts"][0]["links"]
+        self.assertTrue(any("digikey.com" in link["url"] for link in part_links))
+        self.assertTrue(any(plugin["id"] == "kicad_cli" for plugin in catalog["plugins"]))
 
 
 if __name__ == "__main__":

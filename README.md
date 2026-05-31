@@ -39,6 +39,7 @@ The browser app provides:
 - File intake for schematics, firmware, and PCB/BOM manifests
 - Local-only generation toggle
 - Detected rails, interfaces, key parts, and review flags
+- Plugin hub with internet research links for parts, datasheets, CAD, and compliance references
 - Readiness score, optimization queue, validation matrix, and bring-up sequence
 - PDF generation controls
 - Download links for generated packages
@@ -106,6 +107,12 @@ The dashboard and generated documents now include a flaw radar that flags missin
 See [docs/QUALITY_AUDIT.md](docs/QUALITY_AUDIT.md).
 
 For the latest software audit pass, see [docs/PROJECT_AUDIT_REPORT.md](docs/PROJECT_AUDIT_REPORT.md).
+
+## Plugin Hub
+
+The app includes a plugin hub for Octopart/Nexar, DigiKey, Mouser, LCSC, KiCad CLI, compliance references, optional OpenAI drafting, PWA app access, and internal quality audit.
+
+See [docs/PLUGIN_HUB.md](docs/PLUGIN_HUB.md).
 
 ## Windows And Android App Mode
 

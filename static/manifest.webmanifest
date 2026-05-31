@@ -27,6 +27,11 @@
       "name": "Run App Links",
       "short_name": "Run",
       "url": "/#run"
+    },
+    {
+      "name": "Plugin Hub",
+      "short_name": "Plugins",
+      "url": "/#plugins"
     }
   ]
 }

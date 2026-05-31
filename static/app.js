@@ -18,6 +18,7 @@ const icons = {
   phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10v20H7V2Zm2 2v16h6V4H9Zm2 13h2v1h-2v-1Z"/></svg>',
   chart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14v2H3V3h2v16Zm2-2V9h3v8H7Zm5 0V5h3v12h-3Zm5 0v-6h3v6h-3Z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 16.2-3.5-3.5L4 14.2 9 19 20 8l-1.5-1.5L9 16.2Z"/></svg>',
+  plug: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h2v6h2V2h2v6h2V2h2v7c0 2.4-1.7 4.4-4 4.9V22h-2v-8.1c-2.3-.5-4-2.5-4-4.9V2Z"/></svg>',
 };
 
 window.addEventListener("hashchange", () => {
@@ -91,6 +92,7 @@ function sidebar() {
     ["dashboard", "Dashboard", icons.chart],
     ["intake", "Intake", icons.upload],
     ["generate", "Generate", icons.spark],
+    ["plugins", "Plugins", icons.plug],
     ["outputs", "Outputs", icons.file],
     ["run", "Run App", icons.play],
   ];
@@ -120,6 +122,7 @@ function mobileNav() {
     ["dashboard", "Home", icons.chart],
     ["intake", "Files", icons.upload],
     ["generate", "Build", icons.spark],
+    ["plugins", "Plugins", icons.plug],
     ["outputs", "PDFs", icons.file],
     ["run", "Run", icons.phone],
   ];
@@ -155,6 +158,7 @@ function topBar() {
 function activeScreen() {
   if (state.activeView === "intake") return intakeScreen();
   if (state.activeView === "generate") return generateScreen();
+  if (state.activeView === "plugins") return pluginsScreen();
   if (state.activeView === "outputs") return outputsScreen();
   if (state.activeView === "run") return runScreen();
   return dashboardScreen();
@@ -368,6 +372,102 @@ function generateScreen() {
           ${qualityItem("Learning runs", state.status.adaptive_improvement?.runs_total || 0)}
         </div>
       </section>
+    </section>
+  `;
+}
+
+function pluginsScreen() {
+  const catalog = state.status.plugins || {};
+  const plugins = catalog.plugins || [];
+  const research = catalog.research_pack || {};
+  const summary = catalog.summary || {};
+  const categoryRows = groupPluginsByCategory(plugins);
+  return `
+    <section class="plugin-hero panel">
+      <div>
+        <p class="eyebrow">Internet and plugin hub</p>
+        <h2>Research parts, standards, CAD checks, app access, and AI drafting from one place.</h2>
+        <p class="helper">Browser links work immediately. API-style plugins are prepared for credentials when you want deeper automation.</p>
+      </div>
+      <div class="plugin-summary">
+        ${qualityItem("Plugins", summary.total || plugins.length)}
+        ${qualityItem("Internet enabled", summary.internet_enabled || 0)}
+        ${qualityItem("API ready", summary.api_ready || 0)}
+        ${qualityItem("Research links", summary.research_links || 0)}
+      </div>
+    </section>
+    <section class="content-grid">
+      ${categoryRows.map(([category, items]) => pluginCategoryPanel(category, items)).join("")}
+      ${researchPackPanel(research)}
+    </section>
+  `;
+}
+
+function groupPluginsByCategory(plugins) {
+  const groups = new Map();
+  for (const plugin of plugins) {
+    const category = plugin.category || "Plugins";
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(plugin);
+  }
+  return [...groups.entries()];
+}
+
+function pluginCategoryPanel(category, plugins) {
+  const body = plugins.map((plugin) => `
+    <article class="plugin-card">
+      <div class="plugin-card-head">
+        <span class="plugin-mode">${escapeHtml(plugin.mode)}</span>
+        <strong>${escapeHtml(plugin.name)}</strong>
+      </div>
+      <p>${escapeHtml(plugin.description)}</p>
+      <div class="plugin-status">
+        <span>${escapeHtml(plugin.status || "Ready")}</span>
+        ${plugin.internet_required ? "<small>Internet</small>" : "<small>Local</small>"}
+        ${plugin.requires_key ? "<small>API key optional</small>" : ""}
+      </div>
+      <p class="helper">${escapeHtml(plugin.setup)}</p>
+      ${pluginActionLinks(plugin.actions || [])}
+    </article>
+  `).join("");
+  return `<section class="panel wide-panel"><h3>${escapeHtml(category)}</h3><div class="plugin-list">${body}</div></section>`;
+}
+
+function pluginActionLinks(actions) {
+  if (!actions.length) return "";
+  return `<div class="plugin-actions">${actions.slice(0, 5).map((action) => `
+    <a href="${escapeHtml(action.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(action.label)}</a>
+  `).join("")}</div>`;
+}
+
+function researchPackPanel(research) {
+  const parts = research.parts || [];
+  const standards = research.standards || [];
+  const cad = research.cad || [];
+  const partRows = parts.length
+    ? parts.slice(0, 8).map((part) => `
+      <div class="research-row">
+        <strong>${escapeHtml(part.reference)} - ${escapeHtml(part.query)}</strong>
+        ${pluginActionLinks(part.links || [])}
+      </div>
+    `).join("")
+    : `<div class="empty-state">No key part candidates detected yet. Upload schematics or BOM data to create part lookup links.</div>`;
+  const standardRows = [...standards, ...cad].slice(0, 8).map((item) => `
+    <div class="research-row">
+      <strong>${escapeHtml(item.label)}</strong>
+      <span>${escapeHtml(item.reason)}</span>
+      <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open</a>
+    </div>
+  `).join("");
+
+  return `
+    <section class="panel wide-panel">
+      <h3>One-Click Research Pack</h3>
+      <div class="stack-list">${partRows}</div>
+    </section>
+    <section class="panel wide-panel">
+      <h3>Standards And CAD References</h3>
+      <div class="stack-list">${standardRows}</div>
     </section>
   `;
 }

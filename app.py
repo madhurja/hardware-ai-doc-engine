@@ -16,6 +16,7 @@ from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
 from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
+from core.plugins import PluginRegistry
 
 
 ROOT = Path(__file__).resolve().parent
@@ -65,6 +66,7 @@ def status() -> dict:
         "metadata": profile["metadata"],
         "analysis": analysis,
         "quality_audit": QualityAuditEngine().build_audit(profile, analysis),
+        "plugins": PluginRegistry().build_catalog(profile, analysis),
         "outputs": _list_outputs(),
         "document_types": DOCUMENT_TYPES,
         "adaptive_improvement": ImprovementMemory().summary(),
@@ -136,6 +138,13 @@ def generate_documents(
 @app.get("/api/outputs")
 def outputs() -> dict:
     return {"outputs": _list_outputs()}
+
+
+@app.get("/api/plugins")
+def plugins() -> dict:
+    profile = _build_profile()
+    analysis = _summarize_profile(profile)
+    return PluginRegistry().build_catalog(profile, analysis)
 
 
 @app.get("/outputs/{filename}")
