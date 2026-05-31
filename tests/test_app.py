@@ -37,6 +37,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("runtime", payload)
         self.assertIn("local_url", payload["runtime"])
         self.assertIn("skill_review_gates", payload["analysis"])
+        self.assertIn("adaptive_improvement", payload)
+        self.assertIn("runs_total", payload["adaptive_improvement"])
 
 
 if __name__ == "__main__":

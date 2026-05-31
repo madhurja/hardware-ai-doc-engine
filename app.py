@@ -10,8 +10,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from core.document_types import DOCUMENT_TYPES, resolve_document_type
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
+from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
 
 
@@ -19,7 +21,6 @@ ROOT = Path(__file__).resolve().parent
 INPUT_ROOT = ROOT / "input_drop"
 OUTPUT_DIR = ROOT / "output_packages"
 STATIC_DIR = ROOT / "static"
-DOCUMENT_TYPES = ("user_manual", "test_report", "compliance_brief", "bom")
 UPLOAD_TARGETS = {
     "code": INPUT_ROOT / "code",
     "schematics": INPUT_ROOT / "schematics",
@@ -56,6 +57,7 @@ def status() -> dict:
         "analysis": _summarize_profile(profile),
         "outputs": _list_outputs(),
         "document_types": DOCUMENT_TYPES,
+        "adaptive_improvement": ImprovementMemory().summary(),
         "runtime": _runtime_links(),
         "app": {
             "name": "Hardware AI Documentation Engine",
@@ -90,11 +92,13 @@ def generate_documents(
     document_type: Annotated[str, Form()] = "user_manual",
     local_only: Annotated[bool, Form()] = True,
 ) -> dict:
-    if document_type != "all" and document_type not in DOCUMENT_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported document type.")
+    try:
+        resolved_document_type = resolve_document_type(document_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     profile = _build_profile()
-    targets = DOCUMENT_TYPES if document_type == "all" else (document_type,)
+    targets = DOCUMENT_TYPES if resolved_document_type == "all" else (resolved_document_type,)
     generator = DocGenerationEngine(api_key="" if local_only else None)
     exporter = PDFExporter()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -107,7 +111,12 @@ def generate_documents(
         exporter.export_pdf(title, markdown, output)
         created.append(_output_summary(output))
 
-    return {"created": created, "analysis": _summarize_profile(profile)}
+    adaptive_improvement = ImprovementMemory().record_generation(profile, targets, created, run_label="app_generation")
+    return {
+        "created": created,
+        "analysis": _summarize_profile(profile),
+        "adaptive_improvement": adaptive_improvement,
+    }
 
 
 @app.get("/api/outputs")

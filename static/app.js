@@ -164,12 +164,13 @@ function dashboardScreen() {
   const data = state.status;
   const metadata = data.metadata || {};
   const analysis = data.analysis || {};
+  const improvement = data.adaptive_improvement || {};
   const outputs = data.outputs || [];
   const cards = [
     ["Schematics", metadata.schematic_files_scanned || 0, "PDF evidence scanned"],
     ["Rails", (analysis.power_rails || []).length, "Power domains found"],
     ["Subsystems", (analysis.interface_groups || []).length, "Functional blocks"],
-    ["Skill Gates", (analysis.skill_review_gates || []).length, "Imported review gates"],
+    ["Learning Runs", improvement.runs_total || 0, "Adaptive memory"],
   ];
 
   return `
@@ -194,6 +195,7 @@ function dashboardScreen() {
       ${skillGatePanel(analysis.skill_review_gates || [])}
       ${optimizationPanel(analysis.optimization_actions || [])}
       ${validationPanel(analysis.validation_matrix || [])}
+      ${adaptivePanel(improvement)}
     </section>
   `;
 }
@@ -246,6 +248,19 @@ function validationPanel(items) {
     `).join("")
     : `<div class="empty-state">Validation matrix appears after analysis.</div>`;
   return `<section class="panel wide-panel"><h3>Validation Matrix</h3><div class="stack-list">${body}</div></section>`;
+}
+
+function adaptivePanel(improvement) {
+  const hints = improvement.adaptive_hints || [];
+  const risk = (improvement.recurring_risks || [])[0];
+  const body = `
+    <div class="mini-row"><strong>Runs recorded</strong><span>${escapeHtml(improvement.runs_total || 0)}</span></div>
+    <div class="mini-row"><strong>Average readiness</strong><span>${escapeHtml(improvement.average_readiness_score || 0)}/100</span></div>
+    <div class="mini-row"><strong>Best readiness</strong><span>${escapeHtml(improvement.best_readiness_score || 0)}/100</span></div>
+    ${risk ? `<div class="mini-row"><strong>Recurring risk</strong><span>${escapeHtml(risk.item)} (${escapeHtml(risk.count)})</span></div>` : ""}
+    ${hints.slice(0, 3).map((hint) => `<div class="mini-row"><strong>Adaptive hint</strong><span>${escapeHtml(hint)}</span></div>`).join("")}
+  `;
+  return `<section class="panel wide-panel"><h3>Self-Improvement Memory</h3><div class="stack-list">${body}</div></section>`;
 }
 
 function intakeScreen() {
@@ -308,6 +323,7 @@ function generateScreen() {
           ${qualityItem("Validation checks", (state.status.analysis?.validation_matrix || []).length)}
           ${qualityItem("Bring-up steps", (state.status.analysis?.bringup_sequence || []).length)}
           ${qualityItem("Skill-pack gates", (state.status.analysis?.skill_review_gates || []).length)}
+          ${qualityItem("Learning runs", state.status.adaptive_improvement?.runs_total || 0)}
         </div>
       </section>
     </section>

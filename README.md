@@ -82,6 +82,7 @@ The local engine now produces a stronger release-planning profile:
 - Guided bring-up sequence
 - Risk flags for high-speed, wireless, field wiring, ESD, fan, and mixed-voltage sections
 - Integrated schematic/PCB skill-pack review gates
+- Adaptive improvement memory after every generation/test package
 
 These fields appear in the app and inside generated manuals/test documents.
 
@@ -90,6 +91,12 @@ These fields appear in the app and inside generated manuals/test documents.
 The provided `Schematics-and-PCB-Skills-main.zip` has been integrated as a distilled review-gate engine. The app now triggers professional schematic, PCB, DFM, DFT, EMC, thermal, supply-chain, wireless, and safety gates from local evidence.
 
 See [docs/SKILL_PACK_INTEGRATION.md](docs/SKILL_PACK_INTEGRATION.md).
+
+## Adaptive Improvement
+
+After every document or test-package generation, the engine records local quality signals and uses them in future runs. This makes the tool more precise over time while staying safe and deterministic.
+
+See [docs/ADAPTIVE_IMPROVEMENT.md](docs/ADAPTIVE_IMPROVEMENT.md).
 
 ## Windows And Android App Mode
 

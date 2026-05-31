@@ -13,3 +13,5 @@ input_drop/**/*
 !input_drop/**/.gitkeep
 output_packages/**/*
 !output_packages/.gitkeep
+local_state/**/*
+!local_state/.gitkeep

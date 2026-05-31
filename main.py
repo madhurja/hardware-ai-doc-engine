@@ -6,18 +6,16 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from core.document_types import DOCUMENT_TYPES, resolve_document_type
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
+from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
-
-
-DOCUMENT_TYPES = ("user_manual", "test_report", "compliance_brief", "bom")
-TYPE_CHOICES = (*DOCUMENT_TYPES, "all")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate local hardware documentation PDFs.")
-    parser.add_argument("--type", choices=TYPE_CHOICES, default="user_manual", help="Document package type.")
+    parser.add_argument("--type", default="user_manual", help="Document package type. Typos like 'manual', 'test', or 'full' are accepted.")
     parser.add_argument("--code-dir", default="input_drop/code", help="Folder containing firmware source files.")
     parser.add_argument("--schematic-dir", default="input_drop/schematics", help="Folder containing schematic manifests.")
     parser.add_argument("--pcb-dir", default="input_drop/pcb", help="Folder containing PCB/BOM manifests.")
@@ -36,7 +34,13 @@ def main() -> int:
     parser = HardwareManifestParser(args.code_dir, args.schematic_dir, args.pcb_dir)
     hardware_profile = parser.compile_hardware_profile()
 
-    targets = DOCUMENT_TYPES if args.type == "all" else (args.type,)
+    try:
+        requested_type = resolve_document_type(args.type)
+    except ValueError as exc:
+        logging.error("%s", exc)
+        return 2
+
+    targets = DOCUMENT_TYPES if requested_type == "all" else (requested_type,)
 
     print_progress(2, "Generating bounded technical draft")
     generator = DocGenerationEngine(api_key="" if args.local_only else None)
@@ -55,6 +59,13 @@ def main() -> int:
             output_path = exporter.export_pdf(title, markdown, output_dir / f"{document_type}_{timestamp}.pdf")
         output_paths.append(output_path)
 
+    improvement_summary = ImprovementMemory().record_generation(
+        hardware_profile,
+        targets,
+        output_paths,
+        run_label="cli_generation",
+    )
+
     print_progress(4, "Recording local portfolio snapshot")
     if not args.skip_git:
         git_snapshot()
@@ -62,6 +73,11 @@ def main() -> int:
     print("\nDone. Documents created:")
     for output_path in output_paths:
         print(f"- {output_path}")
+    print(
+        "Adaptive improvement memory updated: "
+        f"{improvement_summary['runs_total']} run(s), "
+        f"average readiness {improvement_summary['average_readiness_score']}/100."
+    )
     if not args.skip_git:
         print("GitHub setup tip: add your remote with `git remote add origin <YOUR_GITHUB_REPOSITORY_URL>` when ready.")
     return 0

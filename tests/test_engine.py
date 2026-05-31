@@ -6,6 +6,8 @@ from pathlib import Path
 
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
+from core.document_types import resolve_document_type
+from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
 from core.skill_rules import SkillRuleEngine
 
@@ -211,6 +213,40 @@ class EngineTests(unittest.TestCase):
         self.assertIn("Wireless/RF Certification Gate", titles)
         self.assertIn("Supply Chain And BOM Gate", titles)
         self.assertTrue(SkillRuleEngine.summarize_gates(gates)["gate_count"])
+
+    def test_document_type_resolver_allows_fumbles(self) -> None:
+        self.assertEqual(resolve_document_type("manual"), "user_manual")
+        self.assertEqual(resolve_document_type("test"), "test_report")
+        self.assertEqual(resolve_document_type("full package"), "all")
+        self.assertEqual(resolve_document_type("compliance-brief"), "compliance_brief")
+
+    def test_improvement_memory_records_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            memory = ImprovementMemory(Path(temp_dir) / "memory.json")
+            summary = memory.record_generation(
+                {
+                    "schematics": [
+                        {
+                            "analysis": {
+                                "readiness_score": 81,
+                                "risk_flags": ["High-speed differential routing requires review."],
+                                "skill_review_gates": [{"title": "Signal Integrity Gate"}],
+                                "interface_groups": [{"name": "USB"}],
+                                "power_rails": [{"net": "3V3"}],
+                            }
+                        }
+                    ],
+                    "pcb": [],
+                    "metadata": {"code_files_scanned": 0, "pcb_files_scanned": 0},
+                },
+                ["user_manual"],
+                [Path("user_manual.pdf")],
+            )
+
+            self.assertEqual(summary["runs_total"], 1)
+            self.assertEqual(summary["average_readiness_score"], 81)
+            self.assertTrue(summary["adaptive_hints"])
+            self.assertTrue(summary["recurring_gaps"])
 
 
 if __name__ == "__main__":

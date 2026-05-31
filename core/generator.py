@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from core.improvement import ImprovementMemory
+
 
 class HardwareProfile(BaseModel):
     detected_pins: list[dict[str, Any]] = Field(default_factory=list)
@@ -96,6 +98,7 @@ class DocGenerationEngine:
         pcb_sections = self._format_manifest_sections(profile.pcb, "PCB")
         guidance = self._document_type_guidance(document_type)
         detailed_sections = self._format_user_manual_sections(profile) if document_type == "user_manual" else ""
+        adaptive_notes = self._format_adaptive_notes()
 
         return f"""# {document_type.replace('_', ' ').title()}
 
@@ -108,6 +111,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
 - PCB files scanned: {profile.metadata.get('pcb_files_scanned', 0)}
 - Detected pins: {profile.metadata.get('pin_count', len(profile.detected_pins))}
 - Detected peripherals: {profile.metadata.get('peripheral_count', len(profile.peripherals))}
+
+{adaptive_notes}
 
 ## Detected Pin Map
 | Signal | Physical Pin | Source |
@@ -180,6 +185,22 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     excerpt = str(page.get("text_excerpt", "")).replace("|", "/")[:180]
                     sections.append(f"| {page.get('page')} | {page.get('title', 'Untitled')} | {excerpt} |")
 
+        return "\n".join(sections)
+
+    @staticmethod
+    def _format_adaptive_notes() -> str:
+        summary = ImprovementMemory().summary()
+        if not summary.get("runs_total"):
+            return "## Adaptive Precision Notes\nNo previous local runs have been recorded yet. This run will seed the local improvement memory."
+
+        sections = [
+            "## Adaptive Precision Notes",
+            f"- Previous local runs recorded: {summary.get('runs_total', 0)}",
+            f"- Average readiness score: {summary.get('average_readiness_score', 0)}/100",
+            f"- Best readiness score: {summary.get('best_readiness_score', 0)}/100",
+        ]
+        for hint in summary.get("adaptive_hints", [])[:5]:
+            sections.append(f"- {hint}")
         return "\n".join(sections)
 
     @staticmethod
