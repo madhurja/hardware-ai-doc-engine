@@ -100,6 +100,7 @@ class DocGenerationEngine:
         pcb_sections = self._format_manifest_sections(profile.pcb, "PCB")
         guidance = self._document_type_guidance(document_type)
         detailed_sections = self._format_user_manual_sections(profile) if document_type == "user_manual" else ""
+        drc_sections = self._format_drc_report_sections(profile) if document_type == "drc_report" else ""
         adaptive_notes = self._format_adaptive_notes()
         quality_audit = self._format_quality_audit(profile)
         plugin_notes = self._format_plugin_notes(profile)
@@ -121,6 +122,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
 {quality_audit}
 
 {plugin_notes}
+
+{drc_sections}
 
 ## Detected Pin Map
 | Signal | Physical Pin | Source |
@@ -558,6 +561,82 @@ This local draft was generated from the supplied hardware evidence. It preserves
 
         return "\n".join(sections)
 
+    @classmethod
+    def _format_drc_report_sections(cls, profile: HardwareProfile) -> str:
+        analysis = cls._collect_analysis(profile)
+        audit = QualityAuditEngine().build_audit(profile.model_dump(), analysis)
+        sections: list[str] = []
+
+        sections.append("## Schematic DRC/ERC Review")
+        sections.append(
+            "This report is a PDF-based design-rule and electrical-rule review. It can identify likely risk areas, missing evidence, open gates, and release blockers. It is not a native CAD ERC/DRC pass until schematic/netlist files are supplied."
+        )
+        sections.append(f"- Release status: {audit['release_status']}")
+        sections.append(f"- DRC quality score: {audit['quality_score']}/100")
+        sections.append(f"- Evidence readiness score: {analysis['readiness_score']}/100")
+        sections.append(f"- Schematic sources reviewed: {', '.join(analysis['sources']) or 'not provided'}")
+        sections.append(f"- Schematic pages reviewed: {analysis['page_count']}")
+
+        sections.append("### DRC Capability Boundary")
+        sections.append("| Check Type | PDF-Based Result | Native CAD Requirement |")
+        sections.append("| --- | --- | --- |")
+        boundary_rows = [
+            ("Power rail discovery", "Supported from visible net labels", "Native netlist required for exhaustive rail connectivity"),
+            ("Interface and connector risk", "Supported from signal/component evidence", "Native schematic required for pin-by-pin connection checks"),
+            ("Shorts, no-connects, and floating pins", "Not authoritative from PDF", "Run ERC in KiCad, Altium, EasyEDA, or exported netlist"),
+            ("Differential pair and impedance DRC", "Risk can be flagged", "PCB layout, stackup, and rule constraints required"),
+            ("BOM and footprint correctness", "Candidate parts can be extracted", "Native BOM/placement/CAD library evidence required"),
+        ]
+        for check_type, pdf_result, native_requirement in boundary_rows:
+            sections.append(
+                f"| {cls._md_cell(check_type)} | {cls._md_cell(pdf_result)} | {cls._md_cell(native_requirement)} |"
+            )
+
+        if analysis["power_rails"]:
+            sections.append("### Power Rule Checks")
+            sections.append("| Rail | DRC Concern | Required Evidence |")
+            sections.append("| --- | --- | --- |")
+            for rail in analysis["power_rails"][:14]:
+                sections.append(
+                    f"| {cls._md_cell(rail.get('net', 'unknown'))} | Confirm source, load path, sequencing, enable/PG behavior, and over-current protection. | Measured voltage, current limit, ramp, ripple, and thermal data. |"
+                )
+
+        if analysis["interface_groups"]:
+            sections.append("### Interface Rule Checks")
+            sections.append("| Interface | DRC Concern | Required Evidence |")
+            sections.append("| --- | --- | --- |")
+            for group in analysis["interface_groups"][:14]:
+                name = group.get("name", "Unknown")
+                sections.append(
+                    f"| {cls._md_cell(name)} | {cls._md_cell(cls._drc_concern_for_group(name))} | {cls._md_cell(cls._drc_evidence_for_group(name))} |"
+                )
+
+        if audit["flaws"]:
+            sections.append("### Open DRC Findings")
+            sections.append("| Severity | Area | Finding | Required Fix |")
+            sections.append("| --- | --- | --- | --- |")
+            for flaw in audit["flaws"][:16]:
+                sections.append(
+                    f"| {cls._md_cell(flaw.get('severity'))} | {cls._md_cell(flaw.get('area'))} | {cls._md_cell(flaw.get('flaw'))} | {cls._md_cell(flaw.get('fix'))} |"
+                )
+
+        if analysis["skill_review_gates"]:
+            sections.append("### Rule Gates To Close")
+            sections.append("| Priority | Gate | Evidence Trigger |")
+            sections.append("| --- | --- | --- |")
+            for gate in analysis["skill_review_gates"][:12]:
+                sections.append(
+                    f"| {cls._md_cell(gate.get('priority', 'P2'))} | {cls._md_cell(gate.get('title', 'Review Gate'))} | {cls._md_cell(gate.get('evidence', 'project evidence present'))} |"
+                )
+
+        sections.append("### Native DRC/ERC Upgrade Path")
+        sections.append("- Upload native schematic files, netlists, PCB layout exports, BOM, and rule reports when available.")
+        sections.append("- For KiCad projects, use `kicad-cli sch erc` and `kicad-cli pcb drc`, then attach the generated reports to the intake folder.")
+        sections.append("- For Altium, EasyEDA, OrCAD, or other EDA tools, export ERC/DRC reports plus netlists and BOM data.")
+        sections.append("- Treat this PDF-based report as a professional pre-check and evidence planner until native CAD evidence is attached.")
+
+        return "\n".join(sections)
+
     @staticmethod
     def _collect_analysis(profile: HardwareProfile) -> dict[str, Any]:
         collected = {
@@ -778,6 +857,36 @@ This local draft was generated from the supplied hardware evidence. It preserves
         }
         return notes.get(name, "Perform continuity, voltage, and functional smoke tests.")
 
+    @staticmethod
+    def _drc_concern_for_group(name: str) -> str:
+        concerns = {
+            "Power": "Rail source, load capacity, sequencing, enable pins, PGOOD, shorts, and decoupling coverage.",
+            "Regulators/Power Control": "Feedback network, compensation, thermal margin, inductor/diode ratings, and fault behavior.",
+            "USB": "VBUS current limit, D+/D- polarity, ESD placement, shield policy, and controlled routing.",
+            "Ethernet": "MDI pair mapping, magnetics, shield/chassis connection, ESD, and LED polarity.",
+            "PCIe": "Reference clock, reset, lane polarity, impedance, return path, and length matching.",
+            "CAN/Fieldbus": "CANH/CANL polarity, termination, transceiver supply, surge protection, and ground reference.",
+            "RS485": "A/B polarity, termination, biasing, DE/RE direction control, TVS orientation, and isolation strategy.",
+            "Debug/Programming": "Reset/boot straps, connector pinout, voltage level, pull state, and programming access.",
+            "Protection/ESD": "Clamp direction, capacitance suitability, short return path, and protected-net coverage.",
+        }
+        return concerns.get(name, "Pin direction, voltage level, no-connect intent, pull state, protection, and firmware ownership.")
+
+    @staticmethod
+    def _drc_evidence_for_group(name: str) -> str:
+        evidence = {
+            "Power": "Rail budget, measured ramp/current/ripple data, regulator datasheets, and scope captures.",
+            "Regulators/Power Control": "Datasheet design calculations, thermal estimate, BOM ratings, and bench fault tests.",
+            "USB": "Layout rules, VBUS measurement, enumeration log, ESD part datasheet, and current-limit test.",
+            "Ethernet": "Magnetics datasheet, pair continuity, link test, shield policy, and EMC pre-check.",
+            "PCIe": "PCB stackup, impedance report, length-match report, reset timing, and enumeration log.",
+            "CAN/Fieldbus": "Termination measurement, transceiver datasheet, loopback log, and surge/ESD evidence.",
+            "RS485": "Termination/bias measurement, polarity test, loopback log, protection datasheet, and grounding plan.",
+            "Debug/Programming": "Pinout table, programming log, reset/boot strap measurements, and firmware mapping.",
+            "Protection/ESD": "Protected-net table, diode orientation check, leakage measurement, and pre-compliance evidence.",
+        }
+        return evidence.get(name, "Native schematic/netlist evidence, measured behavior, and owner-approved acceptance criteria.")
+
     @classmethod
     def _subsystem_notes(cls, name: str, analysis: dict[str, Any]) -> list[str]:
         rails = ", ".join(rail["net"] for rail in analysis["power_rails"][:8]) or "not detected"
@@ -872,6 +981,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "- Turn each functional test focus item into a measured pass/fail row before production release.\n"
                 "- Verify every named rail at power-up before attaching external loads.\n"
                 "- Record measured voltages, signal continuity, protection behavior, thermal state, and board revision."
+            ),
+            "drc_report": (
+                "- Treat PDF-based DRC as a professional pre-check, not an authoritative native CAD DRC pass.\n"
+                "- Close every blocker and major flaw with schematic, netlist, PCB, BOM, or bench evidence.\n"
+                "- Run native ERC/DRC in the source EDA tool when project files are available."
             ),
             "compliance_brief": (
                 "- Treat CE/FCC/RoHS status as not certified unless formal lab evidence is supplied.\n"

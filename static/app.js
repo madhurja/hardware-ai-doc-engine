@@ -346,6 +346,7 @@ function generateScreen() {
         <select id="docType">
           <option value="user_manual">Detailed user manual</option>
           <option value="test_report">Functional test report</option>
+          <option value="drc_report">Schematic DRC/ERC report</option>
           <option value="compliance_brief">Compliance brief</option>
           <option value="bom">Draft BOM</option>
           <option value="all">Full package</option>

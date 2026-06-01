@@ -3,7 +3,7 @@ from __future__ import annotations
 from difflib import get_close_matches
 
 
-DOCUMENT_TYPES = ("user_manual", "test_report", "compliance_brief", "bom")
+DOCUMENT_TYPES = ("user_manual", "test_report", "drc_report", "compliance_brief", "bom")
 TYPE_CHOICES = (*DOCUMENT_TYPES, "all")
 
 ALIASES = {
@@ -17,6 +17,12 @@ ALIASES = {
     "test": "test_report",
     "testing": "test_report",
     "test report": "test_report",
+    "drc": "drc_report",
+    "erc": "drc_report",
+    "design rule check": "drc_report",
+    "electrical rule check": "drc_report",
+    "schematic drc": "drc_report",
+    "drc report": "drc_report",
     "compliance": "compliance_brief",
     "compliance brief": "compliance_brief",
     "brief": "compliance_brief",

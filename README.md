@@ -8,6 +8,7 @@ The project is designed for productized documentation work: run the engine local
 
 - Detailed user manuals
 - Functional test reports
+- Schematic DRC/ERC pre-check reports
 - Compliance briefs
 - Draft BOM summaries
 - Schematic analysis summaries with power rails, subsystem coverage, key parts, test focus, and review flags
@@ -60,6 +61,7 @@ Command-line generation remains available:
 ```powershell
 python main.py --type user_manual
 python main.py --type test_report
+python main.py --type drc_report
 python main.py --type compliance_brief
 python main.py --type bom
 ```
@@ -113,6 +115,12 @@ For the latest software audit pass, see [docs/PROJECT_AUDIT_REPORT.md](docs/PROJ
 The app includes a plugin hub for Octopart/Nexar, DigiKey, Mouser, LCSC, KiCad CLI, compliance references, optional OpenAI drafting, PWA app access, and internal quality audit.
 
 See [docs/PLUGIN_HUB.md](docs/PLUGIN_HUB.md).
+
+## Schematic DRC/ERC Mode
+
+The app can generate a PDF-based schematic DRC/ERC pre-check report and clearly separates inferred findings from native CAD DRC requirements.
+
+See [docs/SCHEMATIC_DRC.md](docs/SCHEMATIC_DRC.md).
 
 ## Windows And Android App Mode
 

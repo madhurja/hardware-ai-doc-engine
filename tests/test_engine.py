@@ -243,8 +243,43 @@ class EngineTests(unittest.TestCase):
     def test_document_type_resolver_allows_fumbles(self) -> None:
         self.assertEqual(resolve_document_type("manual"), "user_manual")
         self.assertEqual(resolve_document_type("test"), "test_report")
+        self.assertEqual(resolve_document_type("drc"), "drc_report")
+        self.assertEqual(resolve_document_type("electrical rule check"), "drc_report")
         self.assertEqual(resolve_document_type("full package"), "all")
         self.assertEqual(resolve_document_type("compliance-brief"), "compliance_brief")
+
+    def test_drc_report_includes_boundary_and_rule_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            prompts = Path(temp_dir) / "prompts.json"
+            prompts.write_text(json.dumps({"user_manual": "Prompt"}), encoding="utf-8")
+            engine = DocGenerationEngine(prompts_path=prompts, api_key="")
+            draft = engine.generate_document(
+                "drc_report",
+                {
+                    "detected_pins": [],
+                    "peripherals": [],
+                    "schematics": [
+                        {
+                            "source_file": "board.pdf",
+                            "page_count": 2,
+                            "analysis": {
+                                "readiness_score": 82,
+                                "power_rails": [{"net": "3V3", "role": "3.3 V logic rail"}],
+                                "interface_groups": [{"name": "USB", "evidence": ["USB"], "confidence": 80}],
+                                "risk_flags": ["High-speed differential routing requires impedance review."],
+                                "skill_review_gates": [{"priority": "P1", "title": "Signal Integrity Gate", "evidence": "USB"}],
+                            },
+                        }
+                    ],
+                    "pcb": [],
+                    "metadata": {"schematic_files_scanned": 1, "code_files_scanned": 0, "pcb_files_scanned": 0},
+                },
+            )
+
+            self.assertIn("Schematic DRC/ERC Review", draft)
+            self.assertIn("DRC Capability Boundary", draft)
+            self.assertIn("Open DRC Findings", draft)
+            self.assertIn("Native DRC/ERC Upgrade Path", draft)
 
     def test_improvement_memory_records_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
