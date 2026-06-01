@@ -8,6 +8,7 @@ from core.audit import QualityAuditEngine
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
 from core.document_types import resolve_document_type
+from core.drc import DrcRuleEngine
 from core.improvement import ImprovementMemory
 from core.parser import HardwareManifestParser
 from core.plugins import PluginRegistry
@@ -212,6 +213,7 @@ class EngineTests(unittest.TestCase):
         self.assertIn("CM4_5V", rails)
         self.assertNotIn("SD_PWR_ON75", rails)
         self.assertNotIn("8V", rails)
+        self.assertTrue(analysis["drc_findings"])
         self.assertTrue(analysis["risk_flags"])
         self.assertTrue(analysis["optimization_actions"])
         self.assertTrue(analysis["validation_matrix"])
@@ -279,7 +281,23 @@ class EngineTests(unittest.TestCase):
             self.assertIn("Schematic DRC/ERC Review", draft)
             self.assertIn("DRC Capability Boundary", draft)
             self.assertIn("Open DRC Findings", draft)
-            self.assertIn("Native DRC/ERC Upgrade Path", draft)
+        self.assertIn("Native DRC/ERC Upgrade Path", draft)
+
+    def test_drc_rule_engine_flags_high_speed_and_fieldbus_evidence(self) -> None:
+        findings = DrcRuleEngine().build_findings(
+            "USB D+ D- VBUS RS485 A1 B1 CANH CANL 3V3 5V GND U1 MCU",
+            ["GND", "3V3", "5V"],
+            [{"net": "3V3", "role": "3.3 V logic rail"}, {"net": "5V", "role": "5 V rail"}],
+            [{"name": "USB"}, {"name": "RS485"}, {"name": "CAN/Fieldbus"}],
+            {"integrated_circuits": 1, "capacitors": 0, "inductors": 0},
+            [{"reference": "U1", "value_or_part": "MCU"}],
+            [],
+        )
+        ids = {finding["id"] for finding in findings}
+
+        self.assertIn("DRC-SI-010", ids)
+        self.assertIn("DRC-FIELD-010", ids)
+        self.assertIn("DRC-FIELD-020", ids)
 
     def test_improvement_memory_records_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

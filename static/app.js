@@ -199,6 +199,7 @@ function dashboardScreen() {
       ${analysisPanel("Power Rails", analysis.power_rails || [], (rail) => `<strong>${escapeHtml(rail.net)}</strong><span>${escapeHtml(rail.role)}</span>`)}
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
       ${qualityAuditPanel(audit)}
+      ${drcFindingsPanel(analysis.drc_findings || [], analysis.drc_summary || {})}
       ${skillGatePanel(analysis.skill_review_gates || [])}
       ${optimizationPanel(analysis.optimization_actions || [])}
       ${validationPanel(analysis.validation_matrix || [])}
@@ -289,6 +290,31 @@ function qualityAuditPanel(audit) {
   `;
 }
 
+function drcFindingsPanel(findings, summary) {
+  const body = findings.length
+    ? findings.slice(0, 8).map((finding) => `
+      <div class="priority-row">
+        <span class="priority ${severityClass(finding.severity)}">${escapeHtml(finding.severity || "info")}</span>
+        <div>
+          <strong>${escapeHtml(finding.id)} - ${escapeHtml(finding.domain)}</strong>
+          <span>${escapeHtml(finding.finding)}</span>
+        </div>
+      </div>
+    `).join("")
+    : `<div class="empty-state">No DRC/ERC rule findings were detected from current evidence.</div>`;
+  return `
+    <section class="panel wide-panel">
+      <h3>DRC/ERC Rule Findings</h3>
+      <div class="quality-strip">
+        <span>${escapeHtml(summary.finding_count || 0)} findings</span>
+        <strong>${escapeHtml(summary.score || 100)}/100</strong>
+        <small>PDF-based pre-check; native CAD ERC/DRC still required for final pass/fail.</small>
+      </div>
+      <div class="stack-list">${body}</div>
+    </section>
+  `;
+}
+
 function severityClass(severity) {
   if (severity === "blocker") return "P1";
   if (severity === "major") return "P2";
@@ -369,6 +395,7 @@ function generateScreen() {
           ${qualityItem("Validation checks", (state.status.analysis?.validation_matrix || []).length)}
           ${qualityItem("Bring-up steps", (state.status.analysis?.bringup_sequence || []).length)}
           ${qualityItem("Skill-pack gates", (state.status.analysis?.skill_review_gates || []).length)}
+          ${qualityItem("DRC findings", (state.status.analysis?.drc_findings || []).length)}
           ${qualityItem("Open flaws", flawCount(state.status.quality_audit || {}))}
           ${qualityItem("Learning runs", state.status.adaptive_improvement?.runs_total || 0)}
         </div>

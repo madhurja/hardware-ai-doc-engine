@@ -369,6 +369,16 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     f"| {DocGenerationEngine._md_cell(gate.get('priority', 'P2'))} | {DocGenerationEngine._md_cell(gate.get('title', 'Review Gate'))} | {DocGenerationEngine._md_cell(gate.get('source_skill', 'skill-pack'))} | {DocGenerationEngine._md_cell(gate.get('evidence', 'project evidence present'))} |"
                 )
 
+        drc_findings = analysis.get("drc_findings") or []
+        if drc_findings:
+            sections.append("#### DRC/ERC Findings")
+            sections.append("| Severity | Rule | Domain | Finding |")
+            sections.append("| --- | --- | --- | --- |")
+            for finding in drc_findings[:10]:
+                sections.append(
+                    f"| {DocGenerationEngine._md_cell(finding.get('severity', 'info'))} | {DocGenerationEngine._md_cell(finding.get('id', 'DRC'))} | {DocGenerationEngine._md_cell(finding.get('domain', 'General'))} | {DocGenerationEngine._md_cell(finding.get('finding', 'Review required'))} |"
+                )
+
         return sections
 
     @classmethod
@@ -576,6 +586,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.append(f"- Evidence readiness score: {analysis['readiness_score']}/100")
         sections.append(f"- Schematic sources reviewed: {', '.join(analysis['sources']) or 'not provided'}")
         sections.append(f"- Schematic pages reviewed: {analysis['page_count']}")
+        drc_findings = analysis.get("drc_findings", [])
+        drc_summary = analysis.get("drc_summary", {})
+        if drc_summary:
+            sections.append(f"- Rule-engine DRC score: {drc_summary.get('score', 0)}/100")
+            sections.append(f"- Rule-engine findings: {drc_summary.get('finding_count', len(drc_findings))}")
 
         sections.append("### DRC Capability Boundary")
         sections.append("| Check Type | PDF-Based Result | Native CAD Requirement |")
@@ -620,6 +635,23 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     f"| {cls._md_cell(flaw.get('severity'))} | {cls._md_cell(flaw.get('area'))} | {cls._md_cell(flaw.get('flaw'))} | {cls._md_cell(flaw.get('fix'))} |"
                 )
 
+        if drc_findings:
+            sections.append("### Rule-Engine Findings")
+            sections.append("| Severity | Rule ID | Domain | Check | Finding | Impact | Required Fix | Confidence |")
+            sections.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+            for finding in drc_findings[:18]:
+                sections.append(
+                    f"| {cls._md_cell(finding.get('severity'))} | {cls._md_cell(finding.get('id'))} | {cls._md_cell(finding.get('domain'))} | {cls._md_cell(finding.get('check'))} | {cls._md_cell(finding.get('finding'))} | {cls._md_cell(finding.get('impact'))} | {cls._md_cell(finding.get('fix'))} | {cls._md_cell(finding.get('confidence'))}% |"
+                )
+
+            sections.append("### Evidence Snippets")
+            sections.append("| Rule ID | Extracted Evidence |")
+            sections.append("| --- | --- |")
+            for finding in drc_findings[:12]:
+                sections.append(
+                    f"| {cls._md_cell(finding.get('id'))} | {cls._md_cell(finding.get('evidence'))[:260]} |"
+                )
+
         if analysis["skill_review_gates"]:
             sections.append("### Rule Gates To Close")
             sections.append("| Priority | Gate | Evidence Trigger |")
@@ -637,8 +669,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
 
         return "\n".join(sections)
 
-    @staticmethod
-    def _collect_analysis(profile: HardwareProfile) -> dict[str, Any]:
+    @classmethod
+    def _collect_analysis(cls, profile: HardwareProfile) -> dict[str, Any]:
         collected = {
             "sources": [],
             "page_count": 0,
@@ -651,6 +683,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "validation_matrix": [],
             "bringup_sequence": [],
             "skill_review_gates": [],
+            "drc_findings": [],
             "readiness_scores": [],
         }
         seen = {
@@ -665,6 +698,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "validation_matrix",
                 "bringup_sequence",
                 "skill_review_gates",
+                "drc_findings",
             )
         }
         for manifest in [*profile.schematics, *profile.pcb]:
@@ -677,7 +711,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
             if isinstance(score, (int, float)):
                 collected["readiness_scores"].append(score)
             for rail in analysis.get("power_rails") or []:
-                key = rail.get("net")
+                key = cls._normalize_rail_key(rail.get("net", ""))
                 if key and key not in seen["power_rails"]:
                     collected["power_rails"].append(rail)
                     seen["power_rails"].add(key)
@@ -715,9 +749,36 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 if key and key not in seen["skill_review_gates"]:
                     collected["skill_review_gates"].append(gate)
                     seen["skill_review_gates"].add(key)
+            for finding in analysis.get("drc_findings") or []:
+                key = (finding.get("id"), finding.get("finding"))
+                if key not in seen["drc_findings"]:
+                    collected["drc_findings"].append(finding)
+                    seen["drc_findings"].add(key)
         scores = collected.pop("readiness_scores")
+        collected["drc_summary"] = cls._summarize_drc_findings(collected["drc_findings"])
         collected["readiness_score"] = round(sum(scores) / len(scores)) if scores else 0
         return collected
+
+    @staticmethod
+    def _summarize_drc_findings(findings: list[dict[str, Any]]) -> dict[str, Any]:
+        severity_counts: dict[str, int] = {}
+        domain_counts: dict[str, int] = {}
+        for finding in findings:
+            severity = finding.get("severity", "info")
+            domain = finding.get("domain", "General")
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        penalty = severity_counts.get("blocker", 0) * 25 + severity_counts.get("major", 0) * 8 + severity_counts.get("minor", 0) * 3
+        return {
+            "finding_count": len(findings),
+            "score": max(0, 100 - penalty),
+            "by_severity": severity_counts,
+            "by_domain": domain_counts,
+        }
+
+    @staticmethod
+    def _normalize_rail_key(value: str) -> str:
+        return str(value).upper().replace(".", "").lstrip("+")
 
     @staticmethod
     def _manual_note_for_group(name: str) -> str:

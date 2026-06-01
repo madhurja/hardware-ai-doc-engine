@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import app as app_module
-from app import app
+from app import _summarize_profile, app
 
 
 class DashboardTests(unittest.TestCase):
@@ -55,6 +55,20 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("plugins", payload)
         self.assertIn("research_pack", payload)
         self.assertGreaterEqual(payload["summary"]["total"], 5)
+
+    def test_summary_deduplicates_signed_and_unsigned_rails(self) -> None:
+        summary = _summarize_profile(
+            {
+                "schematics": [
+                    {"analysis": {"power_rails": [{"net": "+12V", "role": "12 V rail"}], "readiness_score": 80}},
+                    {"analysis": {"power_rails": [{"net": "12V", "role": "12 V rail"}], "readiness_score": 80}},
+                ],
+                "pcb": [],
+                "metadata": {},
+            }
+        )
+
+        self.assertEqual([rail["net"] for rail in summary["power_rails"]], ["+12V"])
 
     def test_upload_rejects_unsupported_file_type(self) -> None:
         response = self.client.post(

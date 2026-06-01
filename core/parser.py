@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from core.drc import DrcRuleEngine
 from core.skill_rules import SkillRuleEngine
 
 
@@ -298,6 +299,15 @@ class HardwareManifestParser:
             key_parts,
             risk_flags,
         )
+        drc_findings = DrcRuleEngine().build_findings(
+            compact_text,
+            nets,
+            power_rails,
+            interface_groups,
+            component_counts,
+            key_parts,
+            risk_flags,
+        )
         return {
             "power_rails": power_rails,
             "interface_groups": interface_groups,
@@ -310,6 +320,8 @@ class HardwareManifestParser:
             "bringup_sequence": bringup_sequence,
             "skill_review_gates": skill_review_gates,
             "skill_pack_summary": SkillRuleEngine.summarize_gates(skill_review_gates),
+            "drc_findings": drc_findings,
+            "drc_summary": DrcRuleEngine.summarize(drc_findings),
             "readiness_score": cls._calculate_readiness_score(
                 power_rails,
                 interface_groups,
@@ -339,7 +351,7 @@ class HardwareManifestParser:
         }
         voltage_pattern = re.compile(r"^\+?(?:1V2|1V8|3V|3V3|4V2|5V|12V|24V)$", re.IGNORECASE)
         for net in nets:
-            normalized = net.upper().replace(".", "")
+            normalized = net.upper().replace(".", "").lstrip("+")
             is_voltage = bool(voltage_pattern.fullmatch(normalized))
             is_named_rail = normalized in named_fragments
             if not (is_voltage or is_named_rail) or normalized in seen:

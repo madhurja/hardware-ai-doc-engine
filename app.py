@@ -174,6 +174,7 @@ def _summarize_profile(profile: dict) -> dict:
     validation_matrix = []
     bringup_sequence = []
     skill_review_gates = []
+    drc_findings = []
     readiness_scores = []
     seen = {
         "rails": set(),
@@ -184,6 +185,7 @@ def _summarize_profile(profile: dict) -> dict:
         "validation_matrix": set(),
         "bringup_sequence": set(),
         "skill_review_gates": set(),
+        "drc_findings": set(),
     }
 
     for manifest in manifests:
@@ -192,7 +194,7 @@ def _summarize_profile(profile: dict) -> dict:
         if isinstance(score, (int, float)):
             readiness_scores.append(score)
         for rail in analysis.get("power_rails") or []:
-            key = rail.get("net")
+            key = _normalize_rail_key(rail.get("net", ""))
             if key and key not in seen["rails"]:
                 rails.append(rail)
                 seen["rails"].add(key)
@@ -229,6 +231,11 @@ def _summarize_profile(profile: dict) -> dict:
             if key and key not in seen["skill_review_gates"]:
                 skill_review_gates.append(gate)
                 seen["skill_review_gates"].add(key)
+        for finding in analysis.get("drc_findings") or []:
+            key = (finding.get("id"), finding.get("finding"))
+            if key not in seen["drc_findings"]:
+                drc_findings.append(finding)
+                seen["drc_findings"].add(key)
 
     return {
         "power_rails": rails[:18],
@@ -239,8 +246,31 @@ def _summarize_profile(profile: dict) -> dict:
         "validation_matrix": validation_matrix[:12],
         "bringup_sequence": bringup_sequence[:10],
         "skill_review_gates": skill_review_gates[:12],
+        "drc_findings": drc_findings[:16],
+        "drc_summary": _summarize_drc_findings(drc_findings),
         "readiness_score": round(sum(readiness_scores) / len(readiness_scores)) if readiness_scores else 0,
     }
+
+
+def _summarize_drc_findings(findings: list[dict]) -> dict:
+    severity_counts: dict[str, int] = {}
+    domain_counts: dict[str, int] = {}
+    for finding in findings:
+        severity = finding.get("severity", "info")
+        domain = finding.get("domain", "General")
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+    penalty = severity_counts.get("blocker", 0) * 25 + severity_counts.get("major", 0) * 8 + severity_counts.get("minor", 0) * 3
+    return {
+        "finding_count": len(findings),
+        "score": max(0, 100 - penalty),
+        "by_severity": severity_counts,
+        "by_domain": domain_counts,
+    }
+
+
+def _normalize_rail_key(value: str) -> str:
+    return str(value).upper().replace(".", "").lstrip("+")
 
 
 def _list_outputs() -> list[dict]:

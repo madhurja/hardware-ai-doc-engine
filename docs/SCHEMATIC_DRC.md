@@ -6,10 +6,16 @@ The engine can generate a schematic DRC/ERC pre-check report from PDFs, schemati
 
 For schematic PDFs, the tool can flag:
 
+- Rule IDs with severity, domain, confidence, evidence snippets, impact, and required fixes
 - Named power rails and mixed-voltage risks
 - High-speed interface risks
 - Field-bus polarity, termination, surge, and grounding risks
 - Protection/ESD evidence gaps
+- I2C pull-up evidence gaps
+- USB VBUS evidence gaps
+- Ethernet pair/magnetics evidence gaps
+- PCIe reset, clock, lane, and layout evidence requirements
+- Decoupling and regulator support evidence gaps
 - Supply-chain and BOM evidence gaps
 - Missing firmware, PCB, BOM, and measured validation evidence
 - Review gates that must be closed before release
