@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from core.audit import QualityAuditEngine
+from core.drc import DrcRuleEngine
 from core.improvement import ImprovementMemory
 from core.plugins import PluginRegistry
 
@@ -96,8 +97,14 @@ class DocGenerationEngine:
             for item in profile.peripherals
         ) or "| No peripherals detected | Not provided | Not provided |"
 
-        schematic_sections = self._format_manifest_sections(profile.schematics, "Schematic")
-        pcb_sections = self._format_manifest_sections(profile.pcb, "PCB")
+        combined_analysis = self._collect_analysis(profile)
+        schematic_sections = self._format_manifest_sections(
+            profile.schematics,
+            "Schematic",
+            combined_analysis,
+            profile.metadata,
+        )
+        pcb_sections = self._format_manifest_sections(profile.pcb, "PCB", combined_analysis, profile.metadata)
         guidance = self._document_type_guidance(document_type)
         detailed_sections = self._format_user_manual_sections(profile) if document_type == "user_manual" else ""
         drc_sections = self._format_drc_report_sections(profile) if document_type == "drc_report" else ""
@@ -151,7 +158,12 @@ This local draft was generated from the supplied hardware evidence. It preserves
 """
 
     @staticmethod
-    def _format_manifest_sections(manifests: list[dict[str, Any]], label: str) -> str:
+    def _format_manifest_sections(
+        manifests: list[dict[str, Any]],
+        label: str,
+        global_analysis: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
         if not manifests:
             return f"## {label} Evidence\nNo {label.lower()} manifest data detected."
 
@@ -170,6 +182,14 @@ This local draft was generated from the supplied hardware evidence. It preserves
 
             analysis = manifest.get("analysis") or {}
             if analysis:
+                analysis = dict(analysis)
+                if global_analysis and analysis.get("drc_findings"):
+                    analysis["drc_findings"] = DrcRuleEngine.reconcile_findings(
+                        analysis["drc_findings"],
+                        global_analysis.get("interface_groups", []),
+                        global_analysis.get("power_rails", []),
+                        metadata,
+                    )
                 sections.extend(DocGenerationEngine._format_analysis(analysis))
 
             nets = manifest.get("detected_nets") or []
@@ -588,6 +608,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.append(f"- Schematic pages reviewed: {analysis['page_count']}")
         drc_findings = analysis.get("drc_findings", [])
         drc_summary = analysis.get("drc_summary", {})
+        drc_coverage = analysis.get("drc_coverage", [])
         if drc_summary:
             sections.append(f"- Rule-engine DRC score: {drc_summary.get('score', 0)}/100")
             sections.append(f"- Rule-engine findings: {drc_summary.get('finding_count', len(drc_findings))}")
@@ -606,6 +627,15 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append(
                 f"| {cls._md_cell(check_type)} | {cls._md_cell(pdf_result)} | {cls._md_cell(native_requirement)} |"
             )
+
+        if drc_coverage:
+            sections.append("### Evidence Coverage Matrix")
+            sections.append("| Domain | Status | Evidence | Next Step |")
+            sections.append("| --- | --- | --- | --- |")
+            for row in drc_coverage:
+                sections.append(
+                    f"| {cls._md_cell(row.get('domain'))} | {cls._md_cell(row.get('status'))} | {cls._md_cell(row.get('evidence'))} | {cls._md_cell(row.get('next_step'))} |"
+                )
 
         if analysis["power_rails"]:
             sections.append("### Power Rule Checks")
@@ -755,7 +785,19 @@ This local draft was generated from the supplied hardware evidence. It preserves
                     collected["drc_findings"].append(finding)
                     seen["drc_findings"].add(key)
         scores = collected.pop("readiness_scores")
+        collected["drc_findings"] = DrcRuleEngine.reconcile_findings(
+            collected["drc_findings"],
+            collected["interface_groups"],
+            collected["power_rails"],
+            profile.metadata,
+        )
         collected["drc_summary"] = cls._summarize_drc_findings(collected["drc_findings"])
+        collected["drc_coverage"] = DrcRuleEngine.build_coverage_matrix(
+            collected["drc_findings"],
+            collected["interface_groups"],
+            collected["power_rails"],
+            profile.metadata,
+        )
         collected["readiness_score"] = round(sum(scores) / len(scores)) if scores else 0
         return collected
 

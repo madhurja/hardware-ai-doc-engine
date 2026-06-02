@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.audit import QualityAuditEngine
 from core.document_types import DOCUMENT_TYPES, resolve_document_type
+from core.drc import DrcRuleEngine
 from core.exporter import PDFExporter
 from core.generator import DocGenerationEngine
 from core.improvement import ImprovementMemory
@@ -237,6 +238,19 @@ def _summarize_profile(profile: dict) -> dict:
                 drc_findings.append(finding)
                 seen["drc_findings"].add(key)
 
+    drc_findings = DrcRuleEngine.reconcile_findings(
+        drc_findings,
+        groups,
+        rails,
+        profile.get("metadata") or {},
+    )
+    drc_coverage = DrcRuleEngine.build_coverage_matrix(
+        drc_findings,
+        groups,
+        rails,
+        profile.get("metadata") or {},
+    )
+
     return {
         "power_rails": rails[:18],
         "interface_groups": groups[:16],
@@ -248,6 +262,7 @@ def _summarize_profile(profile: dict) -> dict:
         "skill_review_gates": skill_review_gates[:12],
         "drc_findings": drc_findings[:16],
         "drc_summary": _summarize_drc_findings(drc_findings),
+        "drc_coverage": drc_coverage,
         "readiness_score": round(sum(readiness_scores) / len(readiness_scores)) if readiness_scores else 0,
     }
 

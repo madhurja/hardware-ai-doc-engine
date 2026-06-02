@@ -7,6 +7,8 @@ The engine can generate a schematic DRC/ERC pre-check report from PDFs, schemati
 For schematic PDFs, the tool can flag:
 
 - Rule IDs with severity, domain, confidence, evidence snippets, impact, and required fixes
+- Multi-sheet reconciliation, so evidence found in one PDF can suppress false positives from another PDF
+- Evidence coverage matrix for power, firmware, PCB/BOM, high-speed layout, field-bus, debug, and protection domains
 - Named power rails and mixed-voltage risks
 - High-speed interface risks
 - Field-bus polarity, termination, surge, and grounding risks

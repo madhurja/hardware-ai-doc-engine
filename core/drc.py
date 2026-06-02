@@ -305,6 +305,100 @@ class DrcRuleEngine:
             "by_domain": dict(domain_counts),
         }
 
+    @classmethod
+    def reconcile_findings(
+        cls,
+        findings: list[dict[str, Any]],
+        interface_groups: list[dict[str, Any]],
+        power_rails: list[dict[str, str]],
+        metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        group_names = {group.get("name") for group in interface_groups}
+        rail_count = len(power_rails)
+        resolved_ids = set()
+
+        if "Debug/Programming" in group_names:
+            resolved_ids.add("DRC-DBG-001")
+        if rail_count:
+            resolved_ids.add("DRC-PWR-001")
+
+        reconciled = []
+        for finding in findings:
+            if finding.get("id") in resolved_ids:
+                continue
+            reconciled.append(finding)
+        return sorted(
+            reconciled,
+            key=lambda item: (cls.SEVERITY_RANK.get(item.get("severity", "info"), 9), item.get("domain", ""), item.get("id", "")),
+        )
+
+    @classmethod
+    def build_coverage_matrix(
+        cls,
+        findings: list[dict[str, Any]],
+        interface_groups: list[dict[str, Any]],
+        power_rails: list[dict[str, str]],
+        metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, str]]:
+        metadata = metadata or {}
+        group_names = {group.get("name") for group in interface_groups}
+        finding_ids = {finding.get("id") for finding in findings}
+
+        rows = [
+            cls._coverage_row(
+                "Power rails",
+                "Detected" if power_rails else "Missing",
+                ", ".join(rail.get("net", "") for rail in power_rails[:8]) or "No named rails",
+                "Add native netlist and measured rail table for release.",
+            ),
+            cls._coverage_row(
+                "Firmware traceability",
+                "Detected" if metadata.get("code_files_scanned") else "Missing",
+                f"{metadata.get('code_files_scanned', 0)} source file(s)",
+                "Add firmware pin map, boot behavior, reset behavior, and interface ownership.",
+            ),
+            cls._coverage_row(
+                "PCB/BOM evidence",
+                "Detected" if metadata.get("pcb_files_scanned") else "Missing",
+                f"{metadata.get('pcb_files_scanned', 0)} PCB/BOM file(s)",
+                "Add PCB layout, BOM, placement, stackup, DRC, ERC, and fabrication outputs.",
+            ),
+            cls._coverage_row(
+                "High-speed layout",
+                "Needs native CAD" if {"USB", "HDMI", "PCIe", "Ethernet", "SD/eMMC"} & group_names else "Not detected",
+                ", ".join(sorted({"USB", "HDMI", "PCIe", "Ethernet", "SD/eMMC"} & group_names)) or "No high-speed groups",
+                "Attach impedance, length-match, pair-polarity, return-path, and ESD placement evidence.",
+            ),
+            cls._coverage_row(
+                "Field-bus robustness",
+                "Incomplete" if {"DRC-FIELD-010", "DRC-FIELD-020", "DRC-FIELD-030"} & finding_ids else ("Detected" if {"RS485", "CAN/Fieldbus"} & group_names else "Not detected"),
+                ", ".join(sorted({"RS485", "CAN/Fieldbus"} & group_names)) or "No field bus",
+                "Close termination, bias, surge/ESD, isolation, and grounding evidence.",
+            ),
+            cls._coverage_row(
+                "Debug/programming",
+                "Detected" if "Debug/Programming" in group_names else "Incomplete",
+                "Debug/Programming group present" if "Debug/Programming" in group_names else "No clear debug/programming group",
+                "Confirm JTAG/SWD/UART/BOOT/RESET access and connector pinout.",
+            ),
+            cls._coverage_row(
+                "Protection/ESD",
+                "Needs native CAD" if "Protection/ESD" in group_names else "Incomplete",
+                "Protection devices detected" if "Protection/ESD" in group_names else "No protection group",
+                "Confirm protected nets, TVS orientation, capacitance, placement distance, and return path.",
+            ),
+        ]
+        return rows
+
+    @staticmethod
+    def _coverage_row(domain: str, status: str, evidence: str, next_step: str) -> dict[str, str]:
+        return {
+            "domain": domain,
+            "status": status,
+            "evidence": evidence,
+            "next_step": next_step,
+        }
+
     @staticmethod
     def _normalize_rail(value: str) -> str:
         return value.upper().replace(".", "").lstrip("+")

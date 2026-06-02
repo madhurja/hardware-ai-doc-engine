@@ -199,6 +199,7 @@ function dashboardScreen() {
       ${analysisPanel("Power Rails", analysis.power_rails || [], (rail) => `<strong>${escapeHtml(rail.net)}</strong><span>${escapeHtml(rail.role)}</span>`)}
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
       ${qualityAuditPanel(audit)}
+      ${drcCoveragePanel(analysis.drc_coverage || [])}
       ${drcFindingsPanel(analysis.drc_findings || [], analysis.drc_summary || {})}
       ${skillGatePanel(analysis.skill_review_gates || [])}
       ${optimizationPanel(analysis.optimization_actions || [])}
@@ -313,6 +314,18 @@ function drcFindingsPanel(findings, summary) {
       <div class="stack-list">${body}</div>
     </section>
   `;
+}
+
+function drcCoveragePanel(rows) {
+  const body = rows.length
+    ? rows.map((row) => `
+      <div class="mini-row">
+        <strong>${escapeHtml(row.domain)} - ${escapeHtml(row.status)}</strong>
+        <span>${escapeHtml(row.evidence)} | ${escapeHtml(row.next_step)}</span>
+      </div>
+    `).join("")
+    : `<div class="empty-state">DRC coverage appears after schematic analysis.</div>`;
+  return `<section class="panel wide-panel"><h3>DRC Evidence Coverage</h3><div class="stack-list">${body}</div></section>`;
 }
 
 function severityClass(severity) {

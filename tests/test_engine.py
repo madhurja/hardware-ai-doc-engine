@@ -106,6 +106,55 @@ class EngineTests(unittest.TestCase):
 
             self.assertIn("User Manual", draft)
 
+    def test_drc_report_hides_reconciled_source_false_positive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            prompts = Path(temp_dir) / "prompts.json"
+            prompts.write_text(json.dumps({"user_manual": "Prompt", "drc_report": "Prompt"}), encoding="utf-8")
+            engine = DocGenerationEngine(prompts_path=prompts, api_key="")
+
+            draft = engine.generate_document(
+                "drc_report",
+                {
+                    "detected_pins": [],
+                    "peripherals": [],
+                    "schematics": [
+                        {
+                            "source_file": "sheet_1.pdf",
+                            "page_count": 1,
+                            "analysis": {
+                                "power_rails": [{"net": "3V3", "role": "Logic rail"}],
+                                "interface_groups": [{"name": "USB", "evidence": ["USB"], "confidence": 80}],
+                                "drc_findings": [
+                                    {
+                                        "id": "DRC-DBG-001",
+                                        "severity": "minor",
+                                        "domain": "Debug",
+                                        "check": "Debug access",
+                                        "finding": "ICs were detected but no clear debug/programming block was found.",
+                                    }
+                                ],
+                                "readiness_score": 85,
+                            },
+                        },
+                        {
+                            "source_file": "sheet_2.pdf",
+                            "page_count": 1,
+                            "analysis": {
+                                "interface_groups": [
+                                    {"name": "Debug/Programming", "evidence": ["SWD", "RESET"], "confidence": 80}
+                                ],
+                                "readiness_score": 85,
+                            },
+                        },
+                    ],
+                    "pcb": [],
+                    "metadata": {"schematic_files_scanned": 2, "pcb_files_scanned": 0, "code_files_scanned": 0},
+                },
+            )
+
+            self.assertIn("Evidence Coverage Matrix", draft)
+            self.assertNotIn("DRC-DBG-001", draft)
+
     def test_user_manual_includes_detailed_operator_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             prompts = Path(temp_dir) / "prompts.json"
@@ -298,6 +347,32 @@ class EngineTests(unittest.TestCase):
         self.assertIn("DRC-SI-010", ids)
         self.assertIn("DRC-FIELD-010", ids)
         self.assertIn("DRC-FIELD-020", ids)
+
+    def test_drc_reconciliation_suppresses_cross_sheet_false_positive(self) -> None:
+        findings = [
+            {
+                "id": "DRC-DBG-001",
+                "severity": "minor",
+                "domain": "Debug",
+                "finding": "ICs were detected but no clear debug/programming block was found.",
+            },
+            {
+                "id": "DRC-SI-010",
+                "severity": "major",
+                "domain": "Signal Integrity",
+                "finding": "High-speed layout evidence is missing.",
+            },
+        ]
+        reconciled = DrcRuleEngine.reconcile_findings(
+            findings,
+            [{"name": "Debug/Programming"}, {"name": "USB"}],
+            [{"net": "3V3"}],
+            {"pcb_files_scanned": 1},
+        )
+        ids = {finding["id"] for finding in reconciled}
+
+        self.assertNotIn("DRC-DBG-001", ids)
+        self.assertIn("DRC-SI-010", ids)
 
     def test_improvement_memory_records_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
