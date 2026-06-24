@@ -178,6 +178,8 @@ def _summarize_profile(profile: dict) -> dict:
     drc_findings = []
     port_map = []
     board_visuals = []
+    product_visuals = []
+    visual_insights = []
     eda_pages = []
     manufacturing_notes = []
     production_evidence = []
@@ -194,6 +196,8 @@ def _summarize_profile(profile: dict) -> dict:
         "drc_findings": set(),
         "port_map": set(),
         "board_visuals": set(),
+        "product_visuals": set(),
+        "visual_insights": set(),
         "eda_pages": set(),
         "manufacturing_notes": set(),
         "production_evidence": set(),
@@ -250,6 +254,8 @@ def _summarize_profile(profile: dict) -> dict:
         for field, bucket in (
             ("port_map", port_map),
             ("board_visuals", board_visuals),
+            ("product_visuals", product_visuals),
+            ("visual_insights", visual_insights),
             ("eda_pages", eda_pages),
             ("manufacturing_notes", manufacturing_notes),
             ("production_evidence", production_evidence),
@@ -287,6 +293,8 @@ def _summarize_profile(profile: dict) -> dict:
         "drc_coverage": drc_coverage,
         "port_map": port_map[:24],
         "board_visuals": board_visuals[:6],
+        "product_visuals": product_visuals[:8],
+        "visual_insights": visual_insights[:8],
         "eda_pages": eda_pages[:24],
         "manufacturing_notes": manufacturing_notes[:6],
         "production_evidence": production_evidence[:6],

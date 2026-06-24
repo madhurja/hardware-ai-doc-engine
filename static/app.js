@@ -177,6 +177,7 @@ function dashboardScreen() {
     ["Subsystems", (analysis.interface_groups || []).length, "Functional blocks"],
     ["Ports", (analysis.port_map || []).length, "Connector candidates"],
     ["Visuals", (analysis.board_visuals || []).length, "Board images"],
+    ["Product Visuals", (analysis.product_visuals || []).length, "Feature diagrams"],
     ["Open Flaws", flawCount(audit), audit.release_status || "Audit status"],
     ["Learning Runs", improvement.runs_total || 0, "Adaptive memory"],
   ];
@@ -202,6 +203,7 @@ function dashboardScreen() {
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
       ${qualityAuditPanel(audit)}
       ${portMapPanel(analysis.port_map || [])}
+      ${analysisPanel("Product Visuals", analysis.product_visuals || [], (visual) => `<strong>${escapeHtml(visual.caption || "Product visual")}</strong><span>${escapeHtml(visual.report_note || visual.visual_kind || "")}</span>`)}
       ${drcCoveragePanel(analysis.drc_coverage || [])}
       ${drcFindingsPanel(analysis.drc_findings || [], analysis.drc_summary || {})}
       ${skillGatePanel(analysis.skill_review_gates || [])}

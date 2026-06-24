@@ -313,28 +313,83 @@ class HardwareManifestParser:
 
     def _read_image_manifest(self, path: Path) -> dict[str, Any]:
         width, height = self._image_dimensions(path)
+        visual = self._classify_image_visual(path, width, height)
+        analysis = {
+            "board_visuals": [visual],
+        }
+        if visual["visual_kind"] != "board_render":
+            analysis["product_visuals"] = [visual]
+            analysis["visual_insights"] = [
+                {
+                    "source": str(path),
+                    "caption": visual["caption"],
+                    "visual_kind": visual["visual_kind"],
+                    "insight": visual["report_note"],
+                }
+            ]
+            if visual.get("topics"):
+                analysis["interface_groups"] = self._detect_interface_groups(" ".join(visual["topics"]))
+        return {
+            "source_file": str(path),
+            "artifact_type": visual["visual_kind"],
+            "image": visual,
+            "analysis": analysis,
+        }
+
+    @classmethod
+    def _classify_image_visual(cls, path: Path, width: int | None, height: int | None) -> dict[str, Any]:
         name = path.stem.lower()
+        text = name.replace("-", "_").replace(" ", "_")
+        visual_kind = "board_render"
         caption = "Board visual reference"
-        if "3d" in name or "pcb" in name:
-            caption = "3D PCB render"
-        if "bottom" in name or name.endswith("_bottom"):
+        report_note = "Reference image supplied with the hardware evidence."
+        topics: list[str] = []
+
+        if any(token in text for token in ("ecosystem", "system_context", "charging_ecosystem")):
+            visual_kind = "ecosystem_context"
+            caption = "Charging ecosystem context"
+            report_note = "Shows how the controller sits between vehicle/BMS, power stage, HMI, sensors/contactors, diagnostics, and service workflows."
+            topics = ["Vehicle BMS", "Power stage", "HMI display", "Sensors", "Contactors", "Cloud diagnostics", "Service commissioning", "CAN", "Diagnostics"]
+        elif any(token in text for token in ("stacked_architecture", "architecture", "stacked")):
+            visual_kind = "stacked_architecture"
+            caption = "Stacked architecture overview"
+            report_note = "Explains the upper power/field-interface board and lower control/communication board split."
+            topics = ["Stacked architecture", "Upper board", "Power field interface", "Lower board", "Control communication", "Diagnostics", "Board-to-board"]
+        elif any(token in text for token in ("callout", "controller_callout", "product_overview")):
+            visual_kind = "product_callout"
+            caption = "EV charge controller product callouts"
+            report_note = "Highlights modular stacked design, upper-board power/field interface, lower-board control/communication, high-density vehicle I/O, and serviceable layout."
+            topics = ["Modular stacked design", "Power field interface", "Control communication", "High-density vehicle IO", "Serviceable layout", "ISO 15118", "DIN 70121", "CAN"]
+        elif any(token in text for token in ("advanced_ev", "feature_overview", "charging_control", "capability")):
+            visual_kind = "feature_overview"
+            caption = "Advanced EV charging control feature overview"
+            report_note = "Summarizes safety architecture, charging communication, vehicle networking, inlet control, thermal sensing, software lifecycle, industrial deployment, and scalability."
+            topics = ["Functional safety", "Charging communication", "Vehicle networking", "Inlet control", "Thermal sensing", "Software lifecycle", "Industrial deployment", "Scalable platform"]
+        elif "bottom" in text or text.endswith("_bottom"):
             caption = "Bottom-side board render"
-        elif "top" in name or name.endswith("_top"):
+            report_note = "Bottom-side PCB render for layout and assembly orientation review."
+        elif "top" in text or text.endswith("_top"):
             caption = "Top-side board render"
+            report_note = "Top-side PCB render for connector placement and assembly orientation review."
+        elif "3d" in text or "pcb" in text:
+            caption = "3D PCB render"
+            report_note = "3D PCB render for mechanical and connector placement review."
+        elif width and height and 1.55 <= (width / max(height, 1)) <= 1.9:
+            visual_kind = "annotated_product_visual"
+            caption = "Annotated product visual"
+            report_note = "Wide annotated product image detected; use it as feature, architecture, or system-context evidence after review."
+            topics = ["Product visual", "Annotated feature evidence"]
+
         visual = {
             "source": str(path),
             "caption": caption,
+            "visual_kind": visual_kind,
             "width": str(width or "unknown"),
             "height": str(height or "unknown"),
+            "report_note": report_note,
+            "topics": topics,
         }
-        return {
-            "source_file": str(path),
-            "artifact_type": "board_visual",
-            "image": visual,
-            "analysis": {
-                "board_visuals": [visual],
-            },
-        }
+        return visual
 
     def _read_easyeda_project(self, path: Path) -> dict[str, Any]:
         with zipfile.ZipFile(path) as archive:

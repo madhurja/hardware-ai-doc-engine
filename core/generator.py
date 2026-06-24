@@ -163,6 +163,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
     def _generate_product_brief(self, profile: HardwareProfile) -> str:
         analysis = self._collect_analysis(profile)
         visuals = self._sort_board_visuals(analysis.get("board_visuals", []))
+        product_visuals = self._sort_product_visuals(analysis.get("product_visuals", []))
+        board_visuals = [visual for visual in visuals if visual.get("visual_kind", "board_render") == "board_render"]
         ports = self._prioritize_product_ports(analysis.get("port_map", []))
         production = analysis.get("production_evidence", [])
         notes = analysis.get("manufacturing_notes", [])
@@ -179,9 +181,19 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "",
         ]
 
-        if visuals:
+        if product_visuals:
+            sections.append("## Product Visuals")
+            for visual in product_visuals[:4]:
+                source = str(visual.get("source", "")).replace("\\", "/")
+                caption = visual.get("caption", "Product visual")
+                sections.append(f"![{self._md_cell(caption)}]({source})")
+            sections.append("")
+            sections.append("## Visual Evidence Summary")
+            sections.extend(self._product_visual_summary(product_visuals[:4]))
+            sections.append("")
+        elif board_visuals:
             sections.append("## Board Views")
-            for visual in visuals[:2]:
+            for visual in board_visuals[:2]:
                 source = str(visual.get("source", "")).replace("\\", "/")
                 caption = visual.get("caption", "Board render")
                 sections.append(f"![{self._md_cell(caption)}]({source})")
@@ -211,6 +223,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "| Mechanical dimensions | 3D renders supplied, dimensional drawing not supplied | Add board outline and connector keep-out drawing |",
                 f"| Schematic evidence | {self._md_cell(analysis.get('page_count', 0))} PDF page(s) plus EasyEDA page index | Reviewable |",
                 f"| Detected ports | {self._md_cell(len(ports))} connector candidates | Final labels and mating parts required |",
+                f"| Product visuals | {self._md_cell(len(product_visuals))} annotated product visual(s) detected | Use as presentation evidence, not electrical proof |",
                 "| PCB production package | Gerber/drill archive evidence detected | Requires signed stackup, drill table, and fabrication release |",
                 "| High-speed routing | 90-120 ohm impedance note detected for high-speed lines | Confirm stackup, tolerance, and coupon result with fab |",
                 "",
@@ -291,6 +304,40 @@ This local draft was generated from the supplied hardware evidence. It preserves
             return (2, text)
 
         return sorted(visuals, key=priority)
+
+    @staticmethod
+    def _sort_product_visuals(visuals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        priority = {
+            "feature_overview": 0,
+            "product_callout": 1,
+            "stacked_architecture": 2,
+            "ecosystem_context": 3,
+            "annotated_product_visual": 4,
+        }
+        return sorted(
+            visuals,
+            key=lambda visual: (
+                priority.get(str(visual.get("visual_kind", "")), 9),
+                str(visual.get("caption", "")),
+                str(visual.get("source", "")),
+            ),
+        )
+
+    @staticmethod
+    def _product_visual_summary(visuals: list[dict[str, Any]]) -> list[str]:
+        kinds = {str(visual.get("visual_kind", "")) for visual in visuals}
+        notes: list[str] = []
+        if {"feature_overview", "product_callout"} & kinds:
+            notes.append(
+                "- Feature and product-callout visuals summarize safety, charging communication, vehicle networking, lifecycle support, industrial deployment, modular stacking, I/O density, and serviceability."
+            )
+        if {"stacked_architecture", "ecosystem_context"} & kinds:
+            notes.append(
+                "- Architecture and ecosystem visuals explain the upper/lower board split and the controller relationship to vehicle/BMS, power stage, HMI, sensing, diagnostics, and service workflows."
+            )
+        if not notes:
+            notes.append("- Annotated product visuals are included as presentation evidence; use them for positioning and review context, not as electrical proof.")
+        return notes
 
     @staticmethod
     def _prioritize_product_ports(ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -923,6 +970,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "drc_findings": [],
             "port_map": [],
             "board_visuals": [],
+            "product_visuals": [],
+            "visual_insights": [],
             "eda_pages": [],
             "manufacturing_notes": [],
             "production_evidence": [],
@@ -943,6 +992,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "drc_findings",
                 "port_map",
                 "board_visuals",
+                "product_visuals",
+                "visual_insights",
                 "eda_pages",
                 "manufacturing_notes",
                 "production_evidence",
@@ -1001,7 +1052,7 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 if key not in seen["drc_findings"]:
                     collected["drc_findings"].append(finding)
                     seen["drc_findings"].add(key)
-            for field in ("port_map", "board_visuals", "eda_pages", "manufacturing_notes", "production_evidence"):
+            for field in ("port_map", "board_visuals", "product_visuals", "visual_insights", "eda_pages", "manufacturing_notes", "production_evidence"):
                 for item in analysis.get(field) or []:
                     key = json.dumps(item, sort_keys=True)
                     if key not in seen[field]:

@@ -62,9 +62,9 @@ p {
 img {
   border: 1px solid #cbd5e1;
   display: inline-block;
-  height: auto;
+  height: 28mm;
   margin: 1.5mm 1.5% 1mm 0;
-  max-height: 34mm;
+  max-height: 28mm;
   max-width: 100%;
   object-fit: contain;
   vertical-align: top;

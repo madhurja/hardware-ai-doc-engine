@@ -12,6 +12,25 @@ This brief is evidence-bounded. Electrical ratings, dimensions, certifications, 
 
 ![Board A V0.4 bottom-side render](assets/board_a_v04/board_a_bottom_view.png)
 
+## Product Visuals
+
+![Advanced EV charging control feature overview](assets/board_a_v04/product_visuals/advanced_ev_charging_control.jpeg)
+
+![EV charge controller product callouts](assets/board_a_v04/product_visuals/ev_charge_controller_callouts.jpeg)
+
+![Stacked architecture overview](assets/board_a_v04/product_visuals/stacked_architecture.jpeg)
+
+![Charging ecosystem context](assets/board_a_v04/product_visuals/charging_ecosystem.jpeg)
+
+## Visual Evidence Summary
+
+| Visual | What It Adds To The Report |
+| --- | --- |
+| Advanced EV charging control feature overview | Shows the customer-facing capability story: safety, charging communication, networking, inlet control, thermal sensing, lifecycle support, industrial deployment, and scalability. |
+| EV charge controller product callouts | Labels the stacked modular design, upper-board power/field interface, lower-board control/communication layer, high-density I/O, and serviceable layout. |
+| Stacked architecture overview | Explains the architecture split between upper inlet/power/field I/O and lower control, communication, and diagnostics. |
+| Charging ecosystem context | Places the controller between vehicle/BMS, power stage, HMI/display, sensors/contactors, cloud diagnostics, and service/commissioning. |
+
 ## Application
 
 - EV charge-inlet controller or prototype validation board for CP, PP, PE, lock, feedback, and temperature signal paths.

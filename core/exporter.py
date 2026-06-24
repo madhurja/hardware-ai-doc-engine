@@ -139,18 +139,20 @@ class PDFExporter:
                 flush_bullets()
                 flush_table()
                 continue
-            image_match = re.match(r"!\[[^\]]*\]\(([^)]+)\)", line)
+            image_match = re.match(r"!\[([^\]]*)\]\(([^)]+)\)", line)
             if image_match:
                 flush_bullets()
                 flush_table()
-                image_path = Path(image_match.group(1).strip().strip("<>"))
+                image_alt = image_match.group(1).strip()
+                image_path = Path(image_match.group(2).strip().strip("<>"))
                 if not image_path.is_absolute():
                     image_path = Path.cwd() / image_path
                 if image_path.exists():
-                    story.append(Image(str(image_path), width=doc.width, height=72 * mm, kind="proportional"))
+                    image_height = 32 * mm if self._is_compact_product_visual(image_alt, image_path) else 58 * mm
+                    story.append(Image(str(image_path), width=doc.width, height=image_height, kind="proportional"))
                     story.append(Spacer(1, 2 * mm))
                 else:
-                    story.append(Paragraph(f"Image evidence missing: {self._escape_pdf_text(image_match.group(1))}", styles["BodyText"]))
+                    story.append(Paragraph(f"Image evidence missing: {self._escape_pdf_text(image_match.group(2))}", styles["BodyText"]))
                 continue
             if self._is_markdown_table_line(line):
                 cells = [cell.strip() for cell in line.strip("|").split("|")]
@@ -277,6 +279,23 @@ class PDFExporter:
                 return title, "\n".join(remaining).lstrip()
             break
         return fallback_title, markdown_content
+
+    @staticmethod
+    def _is_compact_product_visual(alt_text: str, image_path: Path) -> bool:
+        text = f"{alt_text} {image_path.stem}".lower()
+        return any(
+            token in text
+            for token in (
+                "feature overview",
+                "product callout",
+                "architecture",
+                "ecosystem",
+                "advanced_ev",
+                "controller_callouts",
+                "stacked_architecture",
+                "charging_ecosystem",
+            )
+        )
 
     def _markdown_to_semantic_html(self, markdown_content: str) -> str:
         try:

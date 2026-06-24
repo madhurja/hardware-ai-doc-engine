@@ -55,7 +55,7 @@ The browser app provides:
    - `input_drop/code/`
    - `input_drop/schematics/`
    - `input_drop/pcb/`
-   Supported hardware evidence includes PDFs, CSV/JSON/XML/netlists, EasyEDA `.epro2` packages, Gerber ZIP archives, manufacturing notes, and board render images.
+   Supported hardware evidence includes PDFs, CSV/JSON/XML/netlists, EasyEDA `.epro2` packages, Gerber ZIP archives, manufacturing notes, board render images, and annotated product visuals such as feature, architecture, and ecosystem diagrams.
 4. Generate one PDF or the full package from the app.
 
 Command-line generation remains available:
@@ -95,7 +95,7 @@ These fields appear in the app and inside generated manuals/test documents.
 
 ## Product Brief Mode
 
-`product_brief` creates a compact Chargebyte-style documentation sheet with board renders, application notes, operational data, interface summaries, connector usage, production evidence, and release checks.
+`product_brief` creates a compact Chargebyte-style documentation sheet with board renders, annotated product visuals, visual evidence summaries, application notes, operational data, interface summaries, connector usage, production evidence, and release checks.
 
 See [docs/BOARD_A_V04_PRODUCT_BRIEF.md](docs/BOARD_A_V04_PRODUCT_BRIEF.md) for the Board A V0.4 example.
 

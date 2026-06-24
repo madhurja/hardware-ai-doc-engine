@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import tempfile
@@ -120,13 +121,11 @@ class EngineTests(unittest.TestCase):
             pcb_dir = root / "pcb"
             schematic_dir.mkdir()
             pcb_dir.mkdir()
-            (pcb_dir / "board.png").write_bytes(
-                b"\x89PNG\r\n\x1a\n"
-                b"\x00\x00\x00\rIHDR"
-                b"\x00\x00\x00\x02\x00\x00\x00\x03"
-                b"\x08\x02\x00\x00\x00"
-                b"\x00\x00\x00\x00"
+            tiny_png = base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
             )
+            (pcb_dir / "board.png").write_bytes(tiny_png)
+            (pcb_dir / "advanced_ev_charging_control.jpeg").write_bytes(tiny_png)
             epru = "\n".join(
                 [
                     '{"type":"DOCHEAD","ticket":1}||{"docType":"SCH_PAGE","uuid":"p1"}|',
@@ -148,12 +147,15 @@ class EngineTests(unittest.TestCase):
             analysis = DocGenerationEngine._collect_analysis(HardwareProfile.model_validate(profile))
             draft = DocGenerationEngine(prompts_path=prompts, api_key="").generate_document("product_brief", profile)
 
-            self.assertEqual(analysis["board_visuals"][0]["width"], "2")
-            self.assertEqual(analysis["board_visuals"][0]["height"], "3")
+            self.assertEqual(analysis["board_visuals"][0]["width"], "1")
+            self.assertEqual(analysis["board_visuals"][0]["height"], "1")
+            self.assertEqual(analysis["product_visuals"][0]["visual_kind"], "feature_overview")
             self.assertEqual(analysis["port_map"][0]["port"], "CN1")
+            self.assertIn("Product Visuals", draft)
+            self.assertIn("Visual Evidence Summary", draft)
             self.assertIn("Connector Overview", draft)
             self.assertIn("Firmware loading", draft)
-            self.assertIn("![Board visual reference]", draft)
+            self.assertIn("![Advanced EV charging control feature overview]", draft)
 
     def test_drc_report_hides_reconciled_source_false_positive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
