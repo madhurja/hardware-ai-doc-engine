@@ -246,6 +246,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             ]
         )
 
+        if self._needs_stacked_architecture_section(product_visuals):
+            sections.extend(self._stacked_architecture_sections())
+
         if ports:
             port_limit = 12
             sections.extend(
@@ -300,6 +303,76 @@ This local draft was generated from the supplied hardware evidence. It preserves
             ]
         )
         return "\n".join(sections)
+
+    @staticmethod
+    def _needs_stacked_architecture_section(product_visuals: list[dict[str, Any]]) -> bool:
+        kinds = {str(visual.get("visual_kind", "")) for visual in product_visuals}
+        return bool(kinds & {"stacked_architecture", "product_callout", "ecosystem_context"})
+
+    @staticmethod
+    def _stacked_architecture_sections() -> list[str]:
+        return [
+            "## Stacked Board Architecture",
+            "Board A V0.4 is best explained as a two-layer controller stack. The upper board is the field-facing layer: it is closest to the vehicle harness, inlet, high-density I/O, power-stage controls, feedback lines, and serviceable terminal connectors. The lower board is the intelligence layer: it carries the control, communication, diagnostics, firmware, and service-access functions that interpret those field signals and coordinate the charging-control behavior.",
+            "",
+            "This split is useful because it keeps noisy, serviceable, and harness-facing interfaces physically separated from MCU, communication, and diagnostic circuitry. In a production design this separation also helps documentation: the upper board can be reviewed as the power/field I/O assembly, while the lower board can be reviewed as the control and communication assembly.",
+            "",
+            "| Stack Layer | Main Work | Evidence In Supplied Visuals | Release Confirmation Needed |",
+            "| --- | --- | --- | --- |",
+            "| Upper board | Handles inlet, power and field I/O, green terminal blocks, high-density vehicle connector, HV feedback/interlock paths, lock and switch-control paths, and serviceable wiring points. | Product callout and stacked-architecture visuals label the upper board as power + field interface / inlet, power and field I/O. | Confirm harness connector labels, mating connectors, pin 1 orientation, current limits, creepage/clearance, isolation boundary, and enclosure keep-outs. |",
+            "| Lower board | Handles MCU control, communication, diagnostics, firmware/service access, CAN/CAN-FD paths, USB/UART service, JTAG/reset, and lower-level signal processing. | Product callout and stacked-architecture visuals label the lower board as control + communication / diagnostics. | Confirm MCU part, firmware image, boot mode, debug access policy, CAN termination, service connector behavior, and update workflow. |",
+            "| Board-to-board interface | Passes power references, logic-level control lines, conditioned sensor/feedback signals, communication lines, and command/status paths between the two boards. | Stacked renders show vertical separation, board-to-board alignment, and standoff-supported construction. | Confirm connector pinout, mating height, insertion depth, mechanical retention, ground return strategy, and no-load continuity before power-up. |",
+            "",
+            "## Upper Board Detail",
+            "The upper board is the part an installer or harness designer will naturally see as the field interface. Its visible role is to gather external wiring and route it into controlled electronics. The large vehicle connector, green terminal blocks, white harness connectors, and upper-side serviceable connector field all point to this board being responsible for field wiring, inlet-related signals, and power-stage related control/feedback paths.",
+            "",
+            "Functionally, the upper board should be treated as the layer that receives or exposes CP, PP, PE, lock, temperature, HV feedback, HV switch/interlock, DC/DC, OBC/AFE, and field wiring signals. It should not be documented as a simple passive adapter until confirmed; the schematic evidence suggests it participates in signal conditioning, routing, protection, and interface organization. During review, every external connector on this layer should be mapped to its mating harness, voltage/current class, signal direction, and safe handling note.",
+            "",
+            "Upper board release checks should focus on connector labeling, terminal polarity, harness keying, standoff clearance, field-side ESD/surge handling, thermal spacing near power components, and the safe-state behavior of lock/interlock/switch-control lines. Any terminal exposed to vehicle or charger wiring should be validated with continuity, polarity, and current-limited bench checks before live system testing.",
+            "",
+            "## Lower Board Detail",
+            "The lower board is the controller and diagnostics layer. The product visuals describe it as the control, communication, and diagnostics board. Its job is to provide the decision-making and service layer for the stack: reading conditioned signals from the upper board, managing communication links, supporting firmware access, and producing control/status outputs back into the field-interface layer.",
+            "",
+            "In practical use, the lower board should be the first board validated during a staged bring-up. Before external field wiring or HV-related simulation is connected, the lower board should prove its rails, reset behavior, debug/programming access, USB/UART service path, CAN/CAN-FD behavior, firmware boot state, and diagnostic visibility. Once the control side is stable, the upper board can be connected and the field interfaces can be validated one group at a time.",
+            "",
+            "Lower board release checks should focus on bootloader behavior, firmware update path, CAN/CAN-FD termination and baud rate, diagnostic logging, JTAG/reset access control, clock/reset stability, isolation from field faults, and whether all upper-board status lines are interpreted correctly by firmware.",
+            "",
+            "## How The Boards Stack Together",
+            "The stack should be assembled as a mechanically supported sandwich: lower board at the base, spacers/standoffs at the mounting points, board-to-board connector aligned, then upper board seated evenly without twisting. The visual evidence shows a service-friendly gap between the boards; that gap must remain large enough for connector bodies, solder joints, airflow, insulation distance, and service access.",
+            "",
+            "| Step | Stack-Up Action | Why It Matters |",
+            "| --- | --- | --- |",
+            "| 1 | Identify lower board orientation, mounting holes, board-to-board connector position, and pin 1 markers. | Prevents rotated or offset mating, which can damage connectors or short power/signal pins. |",
+            "| 2 | Install standoffs and verify equal height before mating the boards. | Keeps the boards parallel and prevents connector stress, cracked solder joints, or tilted headers. |",
+            "| 3 | Seat the upper board straight down into the board-to-board connector. | Avoids bent pins and keeps all power, ground, control, and feedback paths aligned. |",
+            "| 4 | Check clearance around the high-density connector, terminal blocks, USB/service areas, and tall capacitors. | Prevents enclosure, harness, and service-tool interference. |",
+            "| 5 | Perform no-power continuity checks across ground, expected supply pins, and any known no-connect/sensitive nets. | Catches assembly or mating faults before current is applied. |",
+            "",
+            "## Signal Flow Through The Stack",
+            "A normal signal path starts at the vehicle or charger harness, enters the upper board, passes through connector organization and any required protection/conditioning, crosses the board-to-board interface, then reaches the lower board MCU/communication domain. Control decisions travel in the opposite direction: the lower board firmware decides, reports, or commands, then the signal returns through the board-to-board interface to upper-board field outputs.",
+            "",
+            "| Signal Family | Enters / Lives On | Travels To | Purpose |",
+            "| --- | --- | --- | --- |",
+            "| CP, PP, PE and inlet state | Upper board / inlet connector area | Lower board MCU domain | Detect plug state, inlet condition, and charging readiness. |",
+            "| Lock, interlock, thermal and feedback signals | Upper board field interface | Lower board monitoring logic | Support safety monitoring, diagnostics, and fault reaction. |",
+            "| CAN/CAN-FD, service, firmware and diagnostics | Lower board communication domain | Vehicle, service tool, or upper-board status paths | Coordinate with VCU/charger tools and maintain update/service access. |",
+            "| OBC, DC/DC and switch-control paths | Lower board control logic and upper board field outputs | Power-stage related connectors | Drive or supervise charger/power-converter control behavior after validation. |",
+            "",
+            "## Stacked Bring-Up Sequence",
+            "Bring-up should be staged. Start with the controller layer, then add the field layer, then add simulated external interfaces, and only later connect real vehicle/charger wiring. This prevents a single unknown harness or field-side fault from hiding a basic board, firmware, or stack-mating issue.",
+            "",
+            "| Order | Bring-Up Action | Acceptance Evidence |",
+            "| --- | --- | --- |",
+            "| 1 | Inspect both boards separately for solder bridges, missing parts, bent connectors, cracked joints, and standoff damage. | Visual inspection photos and issue log. |",
+            "| 2 | Power the lower board alone if the design permits separate control-side bring-up. | Rails stable, current draw expected, reset/boot behavior clean. |",
+            "| 3 | Confirm USB/UART, JTAG/reset, CAN/CAN-FD, and firmware visibility on the lower board. | Programming log, serial log, CAN test, and reset behavior captured. |",
+            "| 4 | Mate the upper board using standoffs and board-to-board connector alignment checks. | No bent pins, boards parallel, connector fully seated, no mechanical interference. |",
+            "| 5 | Perform no-load continuity and resistance checks across power, ground, and sensitive signal groups. | Continuity sheet attached to the report. |",
+            "| 6 | Power the complete stack with current limiting and no external high-energy wiring. | Current profile, rail measurements, and thermal spot check recorded. |",
+            "| 7 | Validate inlet, lock, temperature, HV feedback, interlock, OBC/AFE, and DC/DC interfaces with simulation or safe low-voltage fixtures. | Pass/fail table with measured voltage, logic state, and firmware interpretation. |",
+            "| 8 | Connect vehicle/charger/CAN/HMI/service ecosystem elements one at a time. | Communication logs, diagnostic screenshots, and fault-recovery behavior captured. |",
+            "",
+        ]
 
     @staticmethod
     def _sort_board_visuals(visuals: list[dict[str, Any]]) -> list[dict[str, Any]]:

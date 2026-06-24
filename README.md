@@ -95,7 +95,7 @@ These fields appear in the app and inside generated manuals/test documents.
 
 ## Product Brief Mode
 
-`product_brief` creates a Chargebyte-style documentation sheet with board renders, annotated product visuals, visual evidence summaries, application notes, operational data, interface summaries, connector usage, production evidence, and release checks. The exporter automatically relaxes the layout when diagrams or explanation-heavy evidence are present, using larger text and a longer 6-10 page format instead of forcing everything into a compact sheet.
+`product_brief` creates a Chargebyte-style documentation sheet with board renders, annotated product visuals, visual evidence summaries, application notes, operational data, interface summaries, stacked-board explanations, connector usage, production evidence, and release checks. The exporter automatically relaxes the layout when diagrams or explanation-heavy evidence are present, using larger text and a longer format instead of forcing everything into a compact sheet.
 
 See [docs/BOARD_A_V04_PRODUCT_BRIEF.md](docs/BOARD_A_V04_PRODUCT_BRIEF.md) for the Board A V0.4 example.
 

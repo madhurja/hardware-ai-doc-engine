@@ -130,6 +130,7 @@ class EngineTests(unittest.TestCase):
             )
             (pcb_dir / "board.png").write_bytes(tiny_png)
             (pcb_dir / "advanced_ev_charging_control.jpeg").write_bytes(tiny_png)
+            (pcb_dir / "stacked_architecture.jpeg").write_bytes(tiny_png)
             epru = "\n".join(
                 [
                     '{"type":"DOCHEAD","ticket":1}||{"docType":"SCH_PAGE","uuid":"p1"}|',
@@ -158,6 +159,12 @@ class EngineTests(unittest.TestCase):
             self.assertIn("Product Visuals", draft)
             self.assertIn("Visual Evidence Summary", draft)
             self.assertIn("Working Explanation", draft)
+            self.assertIn("Stacked Board Architecture", draft)
+            self.assertIn("Upper Board Detail", draft)
+            self.assertIn("Lower Board Detail", draft)
+            self.assertIn("How The Boards Stack Together", draft)
+            self.assertIn("Signal Flow Through The Stack", draft)
+            self.assertIn("Stacked Bring-Up Sequence", draft)
             self.assertIn("Connector Overview", draft)
             self.assertIn("Firmware loading", draft)
             self.assertIn("![Advanced EV charging control feature overview]", draft)
