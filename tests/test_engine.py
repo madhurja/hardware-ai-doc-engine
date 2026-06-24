@@ -2,11 +2,12 @@ import json
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from core.audit import QualityAuditEngine
 from core.exporter import PDFExporter
-from core.generator import DocGenerationEngine
+from core.generator import DocGenerationEngine, HardwareProfile
 from core.document_types import resolve_document_type
 from core.drc import DrcRuleEngine
 from core.improvement import ImprovementMemory
@@ -105,6 +106,49 @@ class EngineTests(unittest.TestCase):
                     os.environ["OPENAI_API_KEY"] = old_key
 
             self.assertIn("User Manual", draft)
+
+    def test_product_brief_extracts_visuals_and_easyeda_ports(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            prompts = root / "prompts.json"
+            prompts.write_text(json.dumps({"user_manual": "Prompt", "product_brief": "Prompt"}), encoding="utf-8")
+            schematic_dir = root / "schematics"
+            pcb_dir = root / "pcb"
+            schematic_dir.mkdir()
+            pcb_dir.mkdir()
+            (pcb_dir / "board.png").write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                b"\x00\x00\x00\rIHDR"
+                b"\x00\x00\x00\x02\x00\x00\x00\x03"
+                b"\x08\x02\x00\x00\x00"
+                b"\x00\x00\x00\x00"
+            )
+            epru = "\n".join(
+                [
+                    '{"type":"DOCHEAD","ticket":1}||{"docType":"SCH_PAGE","uuid":"p1"}|',
+                    '{"type":"META","ticket":2,"id":"META"}||{"title":"JTAG-RESET"}|',
+                    '{"type":"COMPONENT","ticket":3,"id":"c1"}||{"partId":"CONN-TH_14P","x":0,"y":0,"attrs":[]}|',
+                    '{"type":"ATTR","ticket":4,"id":"a1"}||{"parentId":"c1","key":"Designator","value":"CN1"}|',
+                    '{"type":"ATTR","ticket":5,"id":"a2"}||{"parentId":"c1","key":"Manufacturer Part","value":"DSP_JTAG"}|',
+                    '{"type":"COMPONENT","ticket":6,"id":"s1"}||{"partId":"pid","x":0,"y":0,"attrs":[]}|',
+                    '{"type":"ATTR","ticket":7,"id":"a3"}||{"parentId":"s1","key":"Designator","value":"JTAG_TCK"}|',
+                    '{"type":"COMPONENT","ticket":8,"id":"s2"}||{"partId":"pid","x":0,"y":0,"attrs":[]}|',
+                    '{"type":"ATTR","ticket":9,"id":"a4"}||{"parentId":"s2","key":"Designator","value":"RESET"}|',
+                ]
+            )
+            with zipfile.ZipFile(pcb_dir / "board.epro2", "w") as archive:
+                archive.writestr("project2.json", "{}")
+                archive.writestr("LIB_TEST.epru", epru)
+
+            profile = HardwareManifestParser(root / "code", schematic_dir, pcb_dir).compile_hardware_profile()
+            analysis = DocGenerationEngine._collect_analysis(HardwareProfile.model_validate(profile))
+            draft = DocGenerationEngine(prompts_path=prompts, api_key="").generate_document("product_brief", profile)
+
+            self.assertEqual(analysis["board_visuals"][0]["width"], "2")
+            self.assertEqual(analysis["board_visuals"][0]["height"], "3")
+            self.assertEqual(analysis["port_map"][0]["port"], "CN1")
+            self.assertIn("Port And Interface Map", draft)
+            self.assertIn("![Board visual reference]", draft)
 
     def test_drc_report_hides_reconciled_source_false_positive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

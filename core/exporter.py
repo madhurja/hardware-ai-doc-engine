@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import io
+import re
 from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -142,6 +143,19 @@ class PDFExporter:
                 flush_bullets()
                 flush_table()
                 continue
+            image_match = re.match(r"!\[[^\]]*\]\(([^)]+)\)", line)
+            if image_match:
+                flush_bullets()
+                flush_table()
+                image_path = Path(image_match.group(1).strip().strip("<>"))
+                if not image_path.is_absolute():
+                    image_path = Path.cwd() / image_path
+                if image_path.exists():
+                    story.append(Image(str(image_path), width=doc.width, height=72 * mm, kind="proportional"))
+                    story.append(Spacer(1, 2 * mm))
+                else:
+                    story.append(Paragraph(f"Image evidence missing: {self._escape_pdf_text(image_match.group(1))}", styles["BodyText"]))
+                continue
             if self._is_markdown_table_line(line):
                 cells = [cell.strip() for cell in line.strip("|").split("|")]
                 if all(cell and set(cell) <= {"-", ":"} for cell in cells):
@@ -281,6 +295,11 @@ class PDFExporter:
             if line.startswith("# "):
                 flush_list()
                 blocks.append(f"<h2>{html.escape(line[2:])}</h2>")
+            elif (image_match := re.match(r"!\[([^\]]*)\]\(([^)]+)\)", line)):
+                flush_list()
+                alt = html.escape(image_match.group(1))
+                src = html.escape(image_match.group(2).strip().strip("<>"))
+                blocks.append(f'<img src="{src}" alt="{alt}">')
             elif line.startswith("## "):
                 flush_list()
                 blocks.append(f"<h2>{html.escape(line[3:])}</h2>")

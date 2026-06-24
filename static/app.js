@@ -175,6 +175,8 @@ function dashboardScreen() {
     ["Schematics", metadata.schematic_files_scanned || 0, "PDF evidence scanned"],
     ["Rails", (analysis.power_rails || []).length, "Power domains found"],
     ["Subsystems", (analysis.interface_groups || []).length, "Functional blocks"],
+    ["Ports", (analysis.port_map || []).length, "Connector candidates"],
+    ["Visuals", (analysis.board_visuals || []).length, "Board images"],
     ["Open Flaws", flawCount(audit), audit.release_status || "Audit status"],
     ["Learning Runs", improvement.runs_total || 0, "Adaptive memory"],
   ];
@@ -199,6 +201,7 @@ function dashboardScreen() {
       ${analysisPanel("Power Rails", analysis.power_rails || [], (rail) => `<strong>${escapeHtml(rail.net)}</strong><span>${escapeHtml(rail.role)}</span>`)}
       ${analysisPanel("Subsystems", analysis.interface_groups || [], (group) => `<strong>${escapeHtml(group.name)}</strong><span>${escapeHtml((group.evidence || []).slice(0, 4).join(", "))} - ${group.confidence || 0}%</span>`)}
       ${qualityAuditPanel(audit)}
+      ${portMapPanel(analysis.port_map || [])}
       ${drcCoveragePanel(analysis.drc_coverage || [])}
       ${drcFindingsPanel(analysis.drc_findings || [], analysis.drc_summary || {})}
       ${skillGatePanel(analysis.skill_review_gates || [])}
@@ -326,6 +329,18 @@ function drcCoveragePanel(rows) {
     `).join("")
     : `<div class="empty-state">DRC coverage appears after schematic analysis.</div>`;
   return `<section class="panel wide-panel"><h3>DRC Evidence Coverage</h3><div class="stack-list">${body}</div></section>`;
+}
+
+function portMapPanel(rows) {
+  const body = rows.length
+    ? rows.slice(0, 8).map((row) => `
+      <div class="mini-row">
+        <strong>${escapeHtml(row.port)} - ${escapeHtml(row.function)}</strong>
+        <span>${escapeHtml(row.key_signals)} | ${escapeHtml(row.source_page)}</span>
+      </div>
+    `).join("")
+    : `<div class="empty-state">Port mapping appears after EasyEDA, schematic, or connector evidence is detected.</div>`;
+  return `<section class="panel wide-panel"><h3>Port And Connector Map</h3><div class="stack-list">${body}</div></section>`;
 }
 
 function severityClass(severity) {

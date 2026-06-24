@@ -7,6 +7,7 @@ The project is designed for productized documentation work: run the engine local
 ## What It Generates
 
 - Detailed user manuals
+- Datasheet-style product briefs with board visuals and port maps
 - Functional test reports
 - Schematic DRC/ERC pre-check reports
 - Compliance briefs
@@ -54,12 +55,14 @@ The browser app provides:
    - `input_drop/code/`
    - `input_drop/schematics/`
    - `input_drop/pcb/`
+   Supported hardware evidence includes PDFs, CSV/JSON/XML/netlists, EasyEDA `.epro2` packages, Gerber ZIP archives, manufacturing notes, and board render images.
 4. Generate one PDF or the full package from the app.
 
 Command-line generation remains available:
 
 ```powershell
 python main.py --type user_manual
+python main.py --type product_brief
 python main.py --type test_report
 python main.py --type drc_report
 python main.py --type compliance_brief
@@ -89,6 +92,12 @@ The local engine now produces a stronger release-planning profile:
 - Flaw audit with blockers, major gaps, release status, and next actions
 
 These fields appear in the app and inside generated manuals/test documents.
+
+## Product Brief Mode
+
+`product_brief` creates a compact Chargebyte-style documentation sheet with board renders, key features, a technical snapshot, port/interface map, production evidence, and release gates.
+
+See [docs/BOARD_A_V04_PRODUCT_BRIEF.md](docs/BOARD_A_V04_PRODUCT_BRIEF.md) for the Board A V0.4 example.
 
 ## Schematic And PCB Skill Pack
 

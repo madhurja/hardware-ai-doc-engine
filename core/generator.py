@@ -87,6 +87,9 @@ class DocGenerationEngine:
                 os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
     def _generate_local_draft(self, document_type: str, profile: HardwareProfile) -> str:
+        if document_type == "product_brief":
+            return self._generate_product_brief(profile)
+
         pin_rows = "\n".join(
             f"| {self._md_cell(pin.get('signal_name', 'unknown'))} | {self._md_cell(pin.get('physical_pin', 'unknown'))} | {self._md_cell(pin.get('source_file', ''))} |"
             for pin in profile.detected_pins
@@ -156,6 +159,158 @@ This local draft was generated from the supplied hardware evidence. It preserves
 - Add board revision, firmware version, and validation date.
 - Review generated output manually before sending to a client.
 """
+
+    def _generate_product_brief(self, profile: HardwareProfile) -> str:
+        analysis = self._collect_analysis(profile)
+        visuals = self._sort_board_visuals(analysis.get("board_visuals", []))
+        ports = self._prioritize_product_ports(analysis.get("port_map", []))
+        production = analysis.get("production_evidence", [])
+        notes = analysis.get("manufacturing_notes", [])
+        sources = ", ".join(Path(source).name for source in analysis.get("sources", [])[:6]) or "not provided"
+        title = "Board A V0.4 Product Brief"
+
+        sections = [
+            f"# {title}",
+            "",
+            "## Introduction",
+            "Board A V0.4 is an evidence-derived EV charge-control and vehicle-interface controller concept centered on the SPC58NH92 MCU family. This brief is generated from the supplied EasyEDA package, schematic PDF, production package, and 3D PCB renders. Values not present in the source evidence are intentionally marked as confirmation items.",
+            "",
+        ]
+
+        if visuals:
+            sections.append("## Board Views")
+            for visual in visuals[:2]:
+                source = str(visual.get("source", "")).replace("\\", "/")
+                caption = visual.get("caption", "Board render")
+                sections.append(f"![{self._md_cell(caption)}]({source})")
+                sections.append(f"*{self._md_cell(caption)}*")
+            sections.append("")
+
+        sections.extend(
+            [
+                "## Key Features",
+                "- SPC58NH92-based controller architecture with charge inlet, CAN-FD, PLC, HV feedback, interlock, lock, LED, temperature, OBC, DC/DC, and gate-driver interface evidence.",
+                "- Charge inlet signal set includes CP, PP, PE, CP switch controls, proximity feedback, lock motor control, and lock feedback.",
+                "- Vehicle and charging communication evidence includes CANH/CANL channels, VCU CAN, charge CAN, DB9-style CAN ports, and PLC/QCA charging communication signals.",
+                "- Production evidence includes Gerber/drill package metadata and a manufacturing note for impedance-controlled high-speed routing.",
+                "",
+                "## Technical Snapshot",
+                "| Parameter | Evidence | Status |",
+                "| --- | --- | --- |",
+                f"| Source package | {self._md_cell(sources)} | Supplied evidence |",
+                f"| Schematic pages | {self._md_cell(analysis.get('page_count', 0))} PDF page(s) plus EasyEDA page index | Reviewable |",
+                f"| Detected ports | {self._md_cell(len(ports))} connector candidates | Requires final mechanical labeling |",
+                "| PCB production package | Gerber/drill archive evidence detected | Requires signed stackup and fabrication release |",
+                "| Impedance note | 90-120 ohm high-speed routing note detected | Confirm with board stackup and fab constraints |",
+                "",
+            ]
+        )
+
+        if ports:
+            sections.extend(
+                [
+                    "## Port And Interface Map",
+                    "| Port | What It Is | Key Signals / Pins | Connector Evidence | Source Page |",
+                    "| --- | --- | --- | --- | --- |",
+                ]
+            )
+            for port in ports[:14]:
+                sections.append(
+                    f"| {self._md_cell(port.get('port'))} | {self._md_cell(port.get('function'))} | {self._md_cell(port.get('key_signals'))} | {self._md_cell(port.get('connector'))} | {self._md_cell(port.get('source_page'))} |"
+                )
+            if len(ports) > 14:
+                sections.append(f"| Additional connector candidates | {len(ports) - 14} more entries detected | Full connector appendix can be generated from EasyEDA source evidence. | Evidence retained by tool | EasyEDA package |")
+            sections.append("")
+
+        sections.extend(
+            [
+                "## Manufacturing And Release Notes",
+                "| Area | Extracted Evidence | Required Confirmation |",
+                "| --- | --- | --- |",
+            ]
+        )
+        if production:
+            for item in production[:4]:
+                sections.append(
+                    f"| Production package | {self._md_cell(item.get('files'))} files, {self._md_cell(item.get('gerber_layers'))} gerber/layer entries, {self._md_cell(item.get('drill_files'))} drill entries | Release fabrication drawing, stackup, impedance coupon, and assembly notes. |"
+                )
+        if notes:
+            for note in notes[:3]:
+                sections.append(
+                    f"| Fabrication note | {self._md_cell(note.get('note'))[:220]} | Confirm final stackup, copper weight, impedance tolerance, and PCB thickness with the manufacturer. |"
+                )
+        if not production and not notes:
+            sections.append("| Production package | Not detected | Add Gerber, drill, BOM, placement, and stackup evidence. |")
+
+        sections.extend(
+            [
+                "",
+                "## Validation Gates",
+                "- Confirm every external connector label against the enclosure/front-panel artwork before release.",
+                "- Run native schematic ERC and PCB DRC in EasyEDA or exported CAD before calling the design release-ready.",
+                "- Bench-check CP/PP/PE behavior, CAN termination, PLC coupling, lock motor polarity, HV feedback scaling, interlock thresholds, temperature ADC scaling, and reset/JTAG access.",
+                "- Attach measured voltage, current, thermal, isolation, and communication logs to the next documentation run so the report can become release-grade.",
+            ]
+        )
+        return "\n".join(sections)
+
+    @staticmethod
+    def _sort_board_visuals(visuals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        def priority(visual: dict[str, Any]) -> tuple[int, str]:
+            text = f"{visual.get('caption', '')} {visual.get('source', '')}".lower()
+            if "top" in text:
+                return (0, text)
+            if "bottom" in text:
+                return (1, text)
+            return (2, text)
+
+        return sorted(visuals, key=priority)
+
+    @staticmethod
+    def _prioritize_product_ports(ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        priority = {
+            "USB1": 0,
+            "CN1": 1,
+            "CN34": 2,
+            "U22": 3,
+            "U17": 4,
+            "U19": 5,
+            "U187": 6,
+            "U188": 7,
+            "U189": 8,
+            "U184": 9,
+            "P6": 10,
+            "P8": 11,
+            "AFEJ1": 12,
+            "DCDCJ1": 13,
+            "CN2": 14,
+            "P7": 15,
+            "P9": 16,
+            "U193": 17,
+            "U194": 18,
+            "AFEJ2": 19,
+            "DCDCJ2": 20,
+            "DCDC_J3": 21,
+            "CN3": 22,
+            "CN4": 23,
+        }
+
+        def sort_key(port: dict[str, Any]) -> tuple[int, str, str]:
+            ref = str(port.get("port", "")).upper()
+            source_page = str(port.get("source_page", ""))
+            page_bias = 0 if source_page.upper() != "CONNECTORS" else -1
+            return (priority.get(ref, 80) + page_bias, ref, source_page)
+
+        sorted_ports = sorted(ports, key=sort_key)
+        deduped = []
+        seen: set[str] = set()
+        for port in sorted_ports:
+            ref = str(port.get("port", "")).upper()
+            if ref in seen:
+                continue
+            seen.add(ref)
+            deduped.append(port)
+        return deduped
 
     @staticmethod
     def _format_manifest_sections(
@@ -714,6 +869,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "bringup_sequence": [],
             "skill_review_gates": [],
             "drc_findings": [],
+            "port_map": [],
+            "board_visuals": [],
+            "eda_pages": [],
+            "manufacturing_notes": [],
+            "production_evidence": [],
             "readiness_scores": [],
         }
         seen = {
@@ -729,6 +889,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "bringup_sequence",
                 "skill_review_gates",
                 "drc_findings",
+                "port_map",
+                "board_visuals",
+                "eda_pages",
+                "manufacturing_notes",
+                "production_evidence",
             )
         }
         for manifest in [*profile.schematics, *profile.pcb]:
@@ -784,6 +949,12 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 if key not in seen["drc_findings"]:
                     collected["drc_findings"].append(finding)
                     seen["drc_findings"].add(key)
+            for field in ("port_map", "board_visuals", "eda_pages", "manufacturing_notes", "production_evidence"):
+                for item in analysis.get(field) or []:
+                    key = json.dumps(item, sort_keys=True)
+                    if key not in seen[field]:
+                        collected[field].append(item)
+                        seen[field].add(key)
         scores = collected.pop("readiness_scores")
         collected["drc_findings"] = DrcRuleEngine.reconcile_findings(
             collected["drc_findings"],
@@ -1089,6 +1260,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "- Treat PDF-based DRC as a professional pre-check, not an authoritative native CAD DRC pass.\n"
                 "- Close every blocker and major flaw with schematic, netlist, PCB, BOM, or bench evidence.\n"
                 "- Run native ERC/DRC in the source EDA tool when project files are available."
+            ),
+            "product_brief": (
+                "- Keep the document short enough for customer review while preserving connector and release evidence.\n"
+                "- Use board renders, a port map, technical snapshot, and validation gates as the core structure.\n"
+                "- Do not publish ratings, certifications, or dimensions until confirmed by signed source evidence."
             ),
             "compliance_brief": (
                 "- Treat CE/FCC/RoHS status as not certified unless formal lab evidence is supplied.\n"

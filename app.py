@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 INPUT_ROOT = ROOT / "input_drop"
 OUTPUT_DIR = ROOT / "output_packages"
 STATIC_DIR = ROOT / "static"
-MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+MAX_UPLOAD_BYTES = 160 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 UPLOAD_TARGETS = {
     "code": INPUT_ROOT / "code",
@@ -33,8 +33,8 @@ UPLOAD_TARGETS = {
 }
 ALLOWED_UPLOAD_SUFFIXES = {
     "code": {".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".ino"},
-    "schematics": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"},
-    "pcb": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"},
+    "schematics": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf", ".epro2", ".zip", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"},
+    "pcb": {".csv", ".tsv", ".json", ".xml", ".net", ".pdf", ".epro2", ".zip", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"},
 }
 
 
@@ -176,6 +176,11 @@ def _summarize_profile(profile: dict) -> dict:
     bringup_sequence = []
     skill_review_gates = []
     drc_findings = []
+    port_map = []
+    board_visuals = []
+    eda_pages = []
+    manufacturing_notes = []
+    production_evidence = []
     readiness_scores = []
     seen = {
         "rails": set(),
@@ -187,6 +192,11 @@ def _summarize_profile(profile: dict) -> dict:
         "bringup_sequence": set(),
         "skill_review_gates": set(),
         "drc_findings": set(),
+        "port_map": set(),
+        "board_visuals": set(),
+        "eda_pages": set(),
+        "manufacturing_notes": set(),
+        "production_evidence": set(),
     }
 
     for manifest in manifests:
@@ -237,6 +247,18 @@ def _summarize_profile(profile: dict) -> dict:
             if key not in seen["drc_findings"]:
                 drc_findings.append(finding)
                 seen["drc_findings"].add(key)
+        for field, bucket in (
+            ("port_map", port_map),
+            ("board_visuals", board_visuals),
+            ("eda_pages", eda_pages),
+            ("manufacturing_notes", manufacturing_notes),
+            ("production_evidence", production_evidence),
+        ):
+            for item in analysis.get(field) or []:
+                key = repr(sorted(item.items()))
+                if key not in seen[field]:
+                    bucket.append(item)
+                    seen[field].add(key)
 
     drc_findings = DrcRuleEngine.reconcile_findings(
         drc_findings,
@@ -263,6 +285,11 @@ def _summarize_profile(profile: dict) -> dict:
         "drc_findings": drc_findings[:16],
         "drc_summary": _summarize_drc_findings(drc_findings),
         "drc_coverage": drc_coverage,
+        "port_map": port_map[:24],
+        "board_visuals": board_visuals[:6],
+        "eda_pages": eda_pages[:24],
+        "manufacturing_notes": manufacturing_notes[:6],
+        "production_evidence": production_evidence[:6],
         "readiness_score": round(sum(readiness_scores) / len(readiness_scores)) if readiness_scores else 0,
     }
 

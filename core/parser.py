@@ -4,6 +4,7 @@ import csv
 import json
 import logging
 import re
+import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,9 +37,22 @@ class HardwareManifestParser:
     """Builds a structured hardware profile from local firmware and manifests."""
 
     CODE_EXTENSIONS = {".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".ino"}
-    MANIFEST_EXTENSIONS = {".csv", ".tsv", ".json", ".xml", ".net", ".pdf"}
+    IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+    MANIFEST_EXTENSIONS = {
+        ".csv",
+        ".tsv",
+        ".json",
+        ".xml",
+        ".net",
+        ".pdf",
+        ".epro2",
+        ".zip",
+        ".txt",
+        ".md",
+        *IMAGE_EXTENSIONS,
+    }
     MAX_SCAN_FILES = 250
-    MAX_SCAN_BYTES = 100 * 1024 * 1024
+    MAX_SCAN_BYTES = 160 * 1024 * 1024
 
     PIN_PATTERN = re.compile(r"#define\s+(\w+)\s+(GPIO_PIN_\d+|PA_\d+|PB_\d+|\d+)")
     SERIAL_PATTERN = re.compile(r"\bSerial(?:\d*)\.begin\((\d+)\)")
@@ -178,9 +192,17 @@ class HardwareManifestParser:
                     manifests.append({"source_file": str(path), "data": json.loads(path.read_text(encoding="utf-8"))})
                 elif path.suffix.lower() == ".pdf":
                     manifests.append(self._read_pdf_manifest(path))
+                elif path.suffix.lower() == ".epro2":
+                    manifests.append(self._read_easyeda_project(path))
+                elif path.suffix.lower() in self.IMAGE_EXTENSIONS:
+                    manifests.append(self._read_image_manifest(path))
+                elif path.suffix.lower() == ".zip":
+                    manifests.append(self._read_archive_manifest(path))
+                elif path.suffix.lower() in {".txt", ".md"}:
+                    manifests.append(self._read_text_manifest(path))
                 else:
                     manifests.append(self._read_xml_like_manifest(path))
-            except (OSError, json.JSONDecodeError, ET.ParseError, UnicodeDecodeError) as exc:
+            except (OSError, json.JSONDecodeError, ET.ParseError, UnicodeDecodeError, zipfile.BadZipFile) as exc:
                 LOGGER.warning("Could not parse manifest %s: %s", path, exc)
         return manifests
 
@@ -232,6 +254,398 @@ class HardwareManifestParser:
             "analysis": self._analyze_schematic_text(combined_text),
             "document_dates": self._extract_document_dates(combined_text),
         }
+
+    def _read_text_manifest(self, path: Path) -> dict[str, Any]:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        compact = self._compact_text(text, 1800)
+        notes = []
+        if re.search(r"\b(gerber|impedance|stack[- ]?up|copper|thickness|drill|fabrication)\b", text, re.IGNORECASE):
+            notes.append(
+                {
+                    "source": path.name,
+                    "note": self._compact_text(text, 700),
+                }
+            )
+        return {
+            "source_file": str(path),
+            "artifact_type": "engineering_note",
+            "text_excerpt": compact,
+            "analysis": {
+                "manufacturing_notes": notes,
+            },
+        }
+
+    def _read_archive_manifest(self, path: Path) -> dict[str, Any]:
+        with zipfile.ZipFile(path) as archive:
+            entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+        names = [entry.filename for entry in entries]
+        gerber_layers = [
+            name
+            for name in names
+            if Path(name).suffix.upper() in {".GTL", ".GBL", ".GTO", ".GBO", ".GTS", ".GBS", ".GTP", ".GKO", ".GDL", ".G1", ".G2", ".G3", ".G4"}
+            or "gerber" in Path(name).name.lower()
+        ]
+        drill_files = [name for name in names if Path(name).suffix.upper() in {".DRL", ".GDD"} or "drill" in name.lower()]
+        production_rows = []
+        if gerber_layers or drill_files:
+            production_rows.append(
+                {
+                    "source": path.name,
+                    "files": str(len(entries)),
+                    "gerber_layers": str(len(gerber_layers)),
+                    "drill_files": str(len(drill_files)),
+                    "note": "Gerber/drill manufacturing package detected; stackup, impedance, and fabrication constraints still need signed release evidence.",
+                }
+            )
+        return {
+            "source_file": str(path),
+            "artifact_type": "archive",
+            "archive": {
+                "file_count": len(entries),
+                "entries": names[:120],
+                "gerber_layers": gerber_layers[:40],
+                "drill_files": drill_files[:20],
+            },
+            "analysis": {
+                "production_evidence": production_rows,
+            },
+        }
+
+    def _read_image_manifest(self, path: Path) -> dict[str, Any]:
+        width, height = self._image_dimensions(path)
+        name = path.stem.lower()
+        caption = "Board visual reference"
+        if "3d" in name or "pcb" in name:
+            caption = "3D PCB render"
+        if "bottom" in name or name.endswith("_bottom"):
+            caption = "Bottom-side board render"
+        elif "top" in name or name.endswith("_top"):
+            caption = "Top-side board render"
+        visual = {
+            "source": str(path),
+            "caption": caption,
+            "width": str(width or "unknown"),
+            "height": str(height or "unknown"),
+        }
+        return {
+            "source_file": str(path),
+            "artifact_type": "board_visual",
+            "image": visual,
+            "analysis": {
+                "board_visuals": [visual],
+            },
+        }
+
+    def _read_easyeda_project(self, path: Path) -> dict[str, Any]:
+        with zipfile.ZipFile(path) as archive:
+            epru_names = [name for name in archive.namelist() if name.lower().endswith(".epru")]
+            project_names = [name for name in archive.namelist() if name.lower().endswith(".json")]
+            if not epru_names:
+                return {
+                    "source_file": str(path),
+                    "artifact_type": "easyeda_project",
+                    "eda": {"package_entries": archive.namelist()[:60]},
+                    "analysis": {},
+                }
+            raw = archive.read(epru_names[0]).decode("utf-8", errors="ignore")
+
+        segments = self._segment_easyeda_records(raw)
+        page_index = []
+        for segment in segments:
+            doc_type = segment.get("doc_type")
+            if doc_type in {"SCH_PAGE", "PCB", "BOARD", "SCH"}:
+                page_index.append(
+                    {
+                        "title": segment.get("title", "Untitled"),
+                        "type": str(doc_type),
+                        "records": str(len(segment.get("records", []))),
+                    }
+                )
+
+        port_map = self._extract_easyeda_port_map(segments)
+        evidence_text = " ".join(
+            [item.get("title", "") for item in page_index]
+            + [row.get("function", "") for row in port_map]
+            + [row.get("key_signals", "") for row in port_map]
+        )
+        return {
+            "source_file": str(path),
+            "artifact_type": "easyeda_project",
+            "eda": {
+                "package_entries": [*project_names, *epru_names],
+                "page_count": len(page_index),
+                "port_count": len(port_map),
+                "pages": page_index[:80],
+            },
+            "analysis": {
+                "eda_pages": page_index,
+                "port_map": port_map,
+                "interface_groups": self._detect_interface_groups(evidence_text),
+            },
+        }
+
+    @classmethod
+    def _segment_easyeda_records(cls, text: str) -> list[dict[str, Any]]:
+        segments: list[dict[str, Any]] = []
+        current: dict[str, Any] | None = None
+        for raw in text.split("|\n"):
+            raw = raw.strip("|\r\n ")
+            if not raw or "||" not in raw:
+                continue
+            head_text, body_text = raw.split("||", 1)
+            try:
+                head = json.loads(head_text)
+                body = json.loads(body_text)
+            except json.JSONDecodeError:
+                continue
+            if head.get("type") == "DOCHEAD":
+                if current:
+                    segments.append(current)
+                current = {
+                    "doc_type": body.get("docType"),
+                    "uuid": body.get("uuid"),
+                    "records": [],
+                    "title": "Untitled",
+                }
+                continue
+            if current is None:
+                continue
+            current["records"].append((head, body))
+            if head.get("type") == "META" and body.get("title"):
+                current["title"] = str(body.get("title"))
+        if current:
+            segments.append(current)
+        return segments
+
+    @classmethod
+    def _extract_easyeda_port_map(cls, segments: list[dict[str, Any]]) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for segment in segments:
+            if segment.get("doc_type") != "SCH_PAGE":
+                continue
+            title = str(segment.get("title") or "Schematic page")
+            records = segment.get("records", [])
+            attrs_by_parent = cls._easyeda_attrs_by_parent(records)
+            signals = cls._easyeda_page_signals(records, attrs_by_parent)
+            for head, body in records:
+                if head.get("type") != "COMPONENT":
+                    continue
+                attrs = dict(attrs_by_parent.get(head.get("id"), {}))
+                for item in body.get("attrs") or []:
+                    if isinstance(item, dict) and item.get("key"):
+                        attrs[str(item.get("key"))] = str(item.get("value") or "")
+                reference = str(attrs.get("Designator") or "").strip()
+                if not reference:
+                    continue
+                part_text = " ".join(
+                    str(value)
+                    for value in [
+                        body.get("partId"),
+                        attrs.get("Manufacturer Part"),
+                        attrs.get("LCSC Part Name"),
+                        attrs.get("Supplier Footprint"),
+                        attrs.get("3D Model Title"),
+                        attrs.get("Description"),
+                    ]
+                    if value
+                )
+                if not cls._is_easyeda_connector(reference, part_text):
+                    continue
+                function = cls._infer_port_function(title, reference, part_text, signals)
+                key_signals = cls._rank_port_signals(function, signals, reference)
+                key = (title, reference)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(
+                    {
+                        "port": reference,
+                        "function": function,
+                        "key_signals": ", ".join(key_signals[:14]) or "Pin naming requires schematic review",
+                        "connector": cls._connector_description(reference, part_text, attrs),
+                        "source_page": title,
+                        "evidence": f"EasyEDA page {title}",
+                    }
+                )
+        return rows[:80]
+
+    @staticmethod
+    def _easyeda_attrs_by_parent(records: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, dict[str, str]]:
+        attrs: dict[str, dict[str, str]] = {}
+        for head, body in records:
+            if head.get("type") != "ATTR":
+                continue
+            parent = body.get("parentId")
+            key = body.get("key")
+            if not parent or not key:
+                continue
+            attrs.setdefault(str(parent), {})[str(key)] = str(body.get("value") or "")
+        return attrs
+
+    @classmethod
+    def _easyeda_page_signals(
+        cls,
+        records: list[tuple[dict[str, Any], dict[str, Any]]],
+        attrs_by_parent: dict[str, dict[str, str]],
+    ) -> list[str]:
+        signals: list[str] = []
+        seen: set[str] = set()
+        for head, _body in records:
+            if head.get("type") != "COMPONENT":
+                continue
+            attrs = attrs_by_parent.get(str(head.get("id")), {})
+            value = attrs.get("Designator") or attrs.get("Name") or attrs.get("Value") or ""
+            if cls._looks_like_port_signal(value) and value not in seen:
+                signals.append(value)
+                seen.add(value)
+        return signals
+
+    @staticmethod
+    def _looks_like_port_signal(value: str) -> bool:
+        if not value:
+            return False
+        value = str(value).strip()
+        if re.fullmatch(r"(R|C|L|D|Q|U|TP|SB|JP)\d+[A-Z]?", value):
+            return False
+        if re.fullmatch(r"[A-Z]{1,8}\d{1,3}", value) and not value.startswith(("CAN", "TEMP", "LED")):
+            return False
+        return bool(re.fullmatch(r"[A-Z0-9_+\-/]{2,36}", value))
+
+    @staticmethod
+    def _is_easyeda_connector(reference: str, part_text: str) -> bool:
+        ref = reference.upper()
+        part = part_text.upper()
+        if re.fullmatch(r"(CN|J|JP|P|USB|AFEJ|DCDCJ)\d+[A-Z]?", ref):
+            return True
+        connector_tokens = (
+            "CONN",
+            "HEADER",
+            "DB9",
+            "JUMPER",
+            "MICRO-USB",
+            "USB",
+            "PZ2.54",
+            "PZ254",
+            "BX-HA",
+            "WJ500",
+            "A2541",
+            "SBH11",
+            "HB-PH",
+            "XH",
+            "XDZ",
+            "PITCH",
+        )
+        return ref.startswith("U") and any(token in part for token in connector_tokens)
+
+    @classmethod
+    def _infer_port_function(cls, title: str, reference: str, part_text: str, signals: list[str]) -> str:
+        title_upper = title.upper()
+        ref = reference.upper()
+        signal_text = " ".join(signals).upper()
+        part_upper = part_text.upper()
+        if ref == "USB1" or "USB" in title_upper or "MICRO-USB" in part_upper:
+            return "USB service and UART bridge"
+        if "JTAG" in title_upper or ref == "CN1":
+            return "JTAG, reset, and programming access"
+        if "CAN" in title_upper or "DB9" in part_upper or "CANH" in signal_text:
+            return "CAN-FD / vehicle communication"
+        if "QCA" in title_upper or ref == "CN34" or "PLC" in signal_text:
+            return "PLC / charging communication interface"
+        if title_upper == "CONNECTORS":
+            connector_page_map = {
+                "P6": "HV feedback / interlock threshold terminal",
+                "P7": "HV feedback / interlock threshold terminal",
+                "P8": "HV low-side switch control terminal",
+                "P9": "HV low-side switch control terminal",
+                "U18": "HV interlock jumper",
+                "U185": "HV low-side gate jumper",
+                "U184": "CP switch selector header",
+                "U187": "10-pin communications and inlet breakout",
+                "U188": "2x20 main signal breakout",
+                "U189": "5-pin temperature ADC connector",
+                "U1": "3-pin auxiliary header",
+            }
+            if ref in connector_page_map:
+                return connector_page_map[ref]
+        if "GATE_DRIVER" in title_upper:
+            return "Traction inverter gate-driver interface"
+        if "OBC" in title_upper or ref.startswith("AFEJ"):
+            return "On-board charger / AFE interface"
+        if "DC_DC" in title_upper or ref.startswith("DCDC"):
+            return "DC/DC converter control interface"
+        if "TEMP" in title_upper or "TEMP" in signal_text:
+            return "Temperature sensor interface"
+        if "LOCK" in title_upper:
+            return "Inlet lock motor and feedback interface"
+        if "CP" in title_upper or {"CP", "PP", "PE"} & set(signals):
+            return "Charge inlet CP/PP/PE interface"
+        if "HV" in title_upper or "HV" in signal_text:
+            if ref in {"P6", "P7"}:
+                return "HV feedback / interlock threshold terminal"
+            if ref in {"P8", "P9"}:
+                return "HV low-side switch control terminal"
+            return "HV switch, feedback, or interlock interface"
+        return f"{title} connector"
+
+    @staticmethod
+    def _rank_port_signals(function: str, signals: list[str], reference: str) -> list[str]:
+        function_upper = function.upper()
+        keyword_sets = [
+            ("CAN", ("CAN", "VCU", "CHARGE", "GND", "+5V", "3V3")),
+            ("USB", ("USB", "TX", "RX", "5V_USB", "3V3_USB", "GND_USB")),
+            ("JTAG", ("JTAG", "RESET", "VDD", "GND")),
+            ("PLC", ("PLC", "CP", "SPI", "STEMP", "RESET", "STATUS", "GND", "3V3")),
+            ("CHARGE INLET", ("CP", "PP", "PE", "LOCK", "BTN", "FC", "LED")),
+            ("TEMPERATURE", ("TEMP", "ADC", "TEMPGND", "3V3_TEMP")),
+            ("HV", ("HV", "INTERLOCK", "PWM", "ENB", "GATE", "FBK", "LOCK", "LED")),
+            ("GATE", ("FAULT", "PWM", "RTD", "INPUT", "PS", "PG", "PI")),
+            ("OBC", ("PWM", "ADC", "CAN", "AC_", "VP", "VO", "VS", "GND")),
+            ("DC/DC", ("DCPWM", "SR_PWM", "CS", "DC_", "CAN_5V", "SGND", "AGND")),
+        ]
+        active_keywords = ("GND", "3V3", "+5V")
+        for token, keywords in keyword_sets:
+            if token in function_upper:
+                active_keywords = keywords
+                break
+
+        def score(signal: str) -> tuple[int, str]:
+            upper = signal.upper()
+            for index, keyword in enumerate(active_keywords):
+                if keyword in upper:
+                    return (index, signal)
+            return (len(active_keywords) + 1, signal)
+
+        filtered = [signal for signal in signals if signal.upper() != reference.upper()]
+        return sorted(filtered, key=score)
+
+    @staticmethod
+    def _connector_description(reference: str, part_text: str, attrs: dict[str, str]) -> str:
+        pieces = []
+        for key in ("Manufacturer Part", "LCSC Part Name", "Supplier Footprint", "Number of Pins", "Pitch", "Current Rating (Max)", "Voltage Rating (Max)"):
+            value = attrs.get(key)
+            if value:
+                pieces.append(str(value))
+        if not pieces and part_text:
+            pieces.append(part_text)
+        return "; ".join(pieces[:4]) or f"{reference} connector evidence"
+
+    @staticmethod
+    def _image_dimensions(path: Path) -> tuple[int | None, int | None]:
+        try:
+            from PIL import Image
+
+            with Image.open(path) as image:
+                return image.size
+        except Exception:
+            pass
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return None, None
+        if path.suffix.lower() == ".png" and data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+            return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        return None, None
 
     @staticmethod
     def _infer_page_title(text: str, index: int) -> str:
