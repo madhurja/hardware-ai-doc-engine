@@ -67,6 +67,12 @@ This brief is evidence-bounded. Electrical ratings, dimensions, certifications, 
 | Switch and power-converter control | P8/P9, AFEJ1, DCDCJ1 | Provides OBC/DC/DC/gate-drive control and feedback paths | Gate-drive limits, PWM ownership, current sense scaling, and safe state |
 | Service and programming | USB1, CN1, RESET, JTAG signals | Supports firmware load, service UART, and board bring-up | Debug voltage level, protection, boot mode, and production access policy |
 
+## Working Explanation
+
+In simple terms, Board A V0.4 acts as the coordination point between the vehicle, the charging inlet, power-stage hardware, sensing paths, and service tools. The upper board is treated as the power and field-interface layer: it exposes inlet, HV feedback, interlock, switch-control, and external wiring paths. The lower board is treated as the control and communication layer: it carries the MCU, communication, diagnostics, and service-access functions.
+
+When the system is used in an EV charging environment, the controller reads the inlet and safety signals, communicates with vehicle or charger networks, watches thermal and feedback paths, and provides the control hooks needed by OBC, DC/DC, contactor, or switch-control hardware. The annotated visuals are presentation evidence for this architecture, while the schematic/EasyEDA/Gerber files remain the technical evidence for release.
+
 ## Connector Overview
 
 | Port | Interface / Purpose | Important Signals | How It Is Used |

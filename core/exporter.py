@@ -41,35 +41,36 @@ class PDFExporter:
         from reportlab.lib.units import mm
         from reportlab.platypus import Image, ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+        layout = self._layout_profile(markdown_content)
         styles = getSampleStyleSheet()
-        styles["Title"].fontSize = 22
-        styles["Title"].leading = 27
+        styles["Title"].fontSize = layout["title_size"]
+        styles["Title"].leading = layout["title_leading"]
         styles["Title"].textColor = colors.HexColor("#0f172a")
-        styles["Heading1"].fontSize = 15
-        styles["Heading1"].leading = 19
-        styles["Heading1"].spaceBefore = 12
-        styles["Heading1"].spaceAfter = 7
+        styles["Heading1"].fontSize = layout["h1_size"]
+        styles["Heading1"].leading = layout["h1_leading"]
+        styles["Heading1"].spaceBefore = layout["heading_space_before"]
+        styles["Heading1"].spaceAfter = layout["heading_space_after"]
         styles["Heading1"].textColor = colors.HexColor("#0f172a")
-        styles["Heading2"].fontSize = 13
-        styles["Heading2"].leading = 16
-        styles["Heading2"].spaceBefore = 10
-        styles["Heading2"].spaceAfter = 6
+        styles["Heading2"].fontSize = layout["h2_size"]
+        styles["Heading2"].leading = layout["h2_leading"]
+        styles["Heading2"].spaceBefore = layout["heading_space_before"]
+        styles["Heading2"].spaceAfter = layout["heading_space_after"]
         styles["Heading2"].textColor = colors.HexColor("#0f172a")
-        styles["Heading3"].fontSize = 11
-        styles["Heading3"].leading = 14
-        styles["Heading3"].spaceBefore = 7
-        styles["Heading3"].spaceAfter = 4
+        styles["Heading3"].fontSize = layout["h3_size"]
+        styles["Heading3"].leading = layout["h3_leading"]
+        styles["Heading3"].spaceBefore = layout["subheading_space_before"]
+        styles["Heading3"].spaceAfter = layout["subheading_space_after"]
         styles["Heading3"].textColor = colors.HexColor("#0f172a")
-        styles["BodyText"].fontSize = 9.2
-        styles["BodyText"].leading = 12.2
-        styles["BodyText"].spaceAfter = 4
+        styles["BodyText"].fontSize = layout["body_size"]
+        styles["BodyText"].leading = layout["body_leading"]
+        styles["BodyText"].spaceAfter = layout["body_space_after"]
         styles["BodyText"].wordWrap = "CJK"
 
         table_cell_style = ParagraphStyle(
             "TableCell",
             parent=styles["BodyText"],
-            fontSize=7.2,
-            leading=9,
+            fontSize=layout["table_size"],
+            leading=layout["table_leading"],
             wordWrap="CJK",
             splitLongWords=1,
         )
@@ -82,10 +83,10 @@ class PDFExporter:
         doc = SimpleDocTemplate(
             str(output),
             pagesize=A4,
-            rightMargin=12 * mm,
-            leftMargin=12 * mm,
-            topMargin=18 * mm,
-            bottomMargin=18 * mm,
+            rightMargin=layout["margin_x"] * mm,
+            leftMargin=layout["margin_x"] * mm,
+            topMargin=layout["margin_top"] * mm,
+            bottomMargin=layout["margin_bottom"] * mm,
             title=title,
         )
 
@@ -148,9 +149,13 @@ class PDFExporter:
                 if not image_path.is_absolute():
                     image_path = Path.cwd() / image_path
                 if image_path.exists():
-                    image_height = 32 * mm if self._is_compact_product_visual(image_alt, image_path) else 58 * mm
+                    image_height = (
+                        layout["product_image_height"] * mm
+                        if self._is_product_visual(image_alt, image_path)
+                        else layout["board_image_height"] * mm
+                    )
                     story.append(Image(str(image_path), width=doc.width, height=image_height, kind="proportional"))
-                    story.append(Spacer(1, 2 * mm))
+                    story.append(Spacer(1, layout["image_space_after"] * mm))
                 else:
                     story.append(Paragraph(f"Image evidence missing: {self._escape_pdf_text(image_match.group(2))}", styles["BodyText"]))
                 continue
@@ -281,7 +286,7 @@ class PDFExporter:
         return fallback_title, markdown_content
 
     @staticmethod
-    def _is_compact_product_visual(alt_text: str, image_path: Path) -> bool:
+    def _is_product_visual(alt_text: str, image_path: Path) -> bool:
         text = f"{alt_text} {image_path.stem}".lower()
         return any(
             token in text
@@ -296,6 +301,66 @@ class PDFExporter:
                 "charging_ecosystem",
             )
         )
+
+    @staticmethod
+    def _layout_profile(markdown_content: str) -> dict[str, float]:
+        image_count = len(re.findall(r"!\[[^\]]*\]\([^)]+\)", markdown_content))
+        relaxed = (
+            "## Product Visuals" in markdown_content
+            or "## Working Explanation" in markdown_content
+            or image_count >= 4
+        )
+        if relaxed:
+            return {
+                "title_size": 25,
+                "title_leading": 31,
+                "h1_size": 17,
+                "h1_leading": 22,
+                "h2_size": 15,
+                "h2_leading": 19,
+                "h3_size": 12.5,
+                "h3_leading": 16,
+                "body_size": 10.8,
+                "body_leading": 14.8,
+                "body_space_after": 6,
+                "table_size": 8.7,
+                "table_leading": 11.2,
+                "heading_space_before": 14,
+                "heading_space_after": 8,
+                "subheading_space_before": 9,
+                "subheading_space_after": 5,
+                "margin_x": 13,
+                "margin_top": 18,
+                "margin_bottom": 18,
+                "product_image_height": 72,
+                "board_image_height": 66,
+                "image_space_after": 4,
+            }
+        return {
+            "title_size": 22,
+            "title_leading": 27,
+            "h1_size": 15,
+            "h1_leading": 19,
+            "h2_size": 13,
+            "h2_leading": 16,
+            "h3_size": 11,
+            "h3_leading": 14,
+            "body_size": 9.2,
+            "body_leading": 12.2,
+            "body_space_after": 4,
+            "table_size": 7.2,
+            "table_leading": 9,
+            "heading_space_before": 10,
+            "heading_space_after": 6,
+            "subheading_space_before": 7,
+            "subheading_space_after": 4,
+            "margin_x": 12,
+            "margin_top": 18,
+            "margin_bottom": 18,
+            "product_image_height": 32,
+            "board_image_height": 58,
+            "image_space_after": 2,
+        }
 
     def _markdown_to_semantic_html(self, markdown_content: str) -> str:
         try:

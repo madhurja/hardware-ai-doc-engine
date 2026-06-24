@@ -191,7 +191,8 @@ This local draft was generated from the supplied hardware evidence. It preserves
             sections.append("## Visual Evidence Summary")
             sections.extend(self._product_visual_summary(product_visuals[:4]))
             sections.append("")
-        elif board_visuals:
+
+        if board_visuals:
             sections.append("## Board Views")
             for visual in board_visuals[:2]:
                 source = str(visual.get("source", "")).replace("\\", "/")
@@ -237,6 +238,11 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 "| Switch and power-converter control | P8/P9, AFEJ1, DCDCJ1 | Provides OBC/DC/DC/gate-drive control and feedback paths | Gate-drive limits, PWM ownership, current sense scaling, and safe state |",
                 "| Service and programming | USB1, CN1, RESET, JTAG signals | Supports firmware load, service UART, and board bring-up | Debug voltage level, protection, boot mode, and production access policy |",
                 "",
+                "## Working Explanation",
+                "In simple terms, Board A V0.4 acts as the coordination point between the vehicle, the charging inlet, power-stage hardware, sensing paths, and service tools. The upper board is treated as the power and field-interface layer: it exposes inlet, HV feedback, interlock, switch-control, and external wiring paths. The lower board is treated as the control and communication layer: it carries the MCU, communication, diagnostics, and service-access functions.",
+                "",
+                "When the system is used in an EV charging environment, the controller reads the inlet and safety signals, communicates with vehicle or charger networks, watches thermal and feedback paths, and provides the control hooks needed by OBC, DC/DC, contactor, or switch-control hardware. The annotated visuals are presentation evidence for this architecture, while the schematic/EasyEDA/Gerber files remain the technical evidence for release.",
+                "",
             ]
         )
 
@@ -260,7 +266,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.extend(
             [
                 "## Functional Description",
-                "During use, the MCU domain reads inlet-related CP, PP, PE, proximity, lock, temperature, HV feedback, and interlock-related signals while coordinating communication through CAN/CAN-FD and PLC-related interfaces. The OBC, DC/DC, and switch-control connectors provide the board-level hooks for charger and power-path coordination. USB/UART and JTAG/reset remain service and development interfaces and should be treated as controlled access points in a production enclosure.",
+                "During operation, the MCU domain reads inlet-related CP, PP, PE, proximity, lock, temperature, HV feedback, and interlock-related signals while coordinating communication through CAN/CAN-FD and PLC-related interfaces. The OBC, DC/DC, and switch-control connectors provide the board-level hooks for charger and power-path coordination. USB/UART and JTAG/reset remain service and development interfaces and should be treated as controlled access points in a production enclosure.",
+                "",
+                "The controller should therefore be documented as a layered EV charging control platform rather than only as a PCB. Product visuals explain the usage story; connector tables explain what each physical port is for; manufacturing notes explain what still blocks release; and validation checks explain how the next test run should prove the design.",
                 "",
                 "## Manufacturing And Qualification Notes",
                 "| Area | Extracted Evidence | Required Confirmation |",
