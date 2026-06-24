@@ -89,15 +89,11 @@ class PDFExporter:
             title=title,
         )
 
+        display_title, body_markdown = self._split_leading_title(markdown_content, title)
         story = [
-            Paragraph(title, styles["Title"]),
-            Paragraph("Automated Engineering Delivery", styles["Normal"]),
+            Paragraph(display_title, styles["Title"]),
             Spacer(1, 4 * mm),
         ]
-        hero_path = Path("static/assets/hardware-workbench.jpg")
-        if hero_path.exists():
-            story.append(Image(str(hero_path), width=174 * mm, height=58 * mm, kind="proportional"))
-            story.append(Spacer(1, 6 * mm))
         pending_bullets: list[str] = []
         pending_table: list[list[str]] = []
 
@@ -137,7 +133,7 @@ class PDFExporter:
                 story.append(Spacer(1, 4 * mm))
                 pending_table.clear()
 
-        for raw_line in markdown_content.splitlines():
+        for raw_line in body_markdown.splitlines():
             line = raw_line.strip()
             if not line:
                 flush_bullets()
@@ -246,9 +242,10 @@ class PDFExporter:
         return output
 
     def convert_markdown_to_html(self, title: str, markdown_content: str) -> str:
-        body = self._markdown_to_semantic_html(markdown_content)
+        display_title, body_markdown = self._split_leading_title(markdown_content, title)
+        body = self._markdown_to_semantic_html(body_markdown)
         css = self.css_path.read_text(encoding="utf-8") if self.css_path.exists() else ""
-        safe_title = html.escape(title)
+        safe_title = html.escape(display_title)
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -258,7 +255,6 @@ class PDFExporter:
 </head>
 <body>
   <header class="top-bar">
-    <div class="eyebrow">Automated Engineering Delivery</div>
     <h1>{safe_title}</h1>
   </header>
   <main>
@@ -267,6 +263,20 @@ class PDFExporter:
 </body>
 </html>
 """
+
+    @staticmethod
+    def _split_leading_title(markdown_content: str, fallback_title: str) -> tuple[str, str]:
+        lines = markdown_content.splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("# "):
+                title = stripped[2:].strip() or fallback_title
+                remaining = lines[:index] + lines[index + 1 :]
+                return title, "\n".join(remaining).lstrip()
+            break
+        return fallback_title, markdown_content
 
     def _markdown_to_semantic_html(self, markdown_content: str) -> str:
         try:

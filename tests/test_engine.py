@@ -58,6 +58,10 @@ class EngineTests(unittest.TestCase):
             self.assertIn("<title>Test Report</title>", html)
             self.assertIn("<h2>Scope</h2>", html)
             self.assertIn("<li>Item one</li>", html)
+            self.assertNotIn("Automated Engineering Delivery", html)
+            product_html = PDFExporter(css).convert_markdown_to_html("Product Brief", "# Board A V0.4 Product Brief\n\n## Scope")
+            self.assertIn("<title>Board A V0.4 Product Brief</title>", product_html)
+            self.assertNotIn("<h2>Board A V0.4 Product Brief</h2>", product_html)
             unsafe_html = PDFExporter(css).convert_markdown_to_html("Safe", "## Scope\n<script>alert(1)</script>")
             self.assertNotIn("<script>", unsafe_html)
             self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", unsafe_html)
@@ -147,7 +151,8 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(analysis["board_visuals"][0]["width"], "2")
             self.assertEqual(analysis["board_visuals"][0]["height"], "3")
             self.assertEqual(analysis["port_map"][0]["port"], "CN1")
-            self.assertIn("Port And Interface Map", draft)
+            self.assertIn("Connector Overview", draft)
+            self.assertIn("Firmware loading", draft)
             self.assertIn("![Board visual reference]", draft)
 
     def test_drc_report_hides_reconciled_source_false_positive(self) -> None:

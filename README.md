@@ -95,7 +95,7 @@ These fields appear in the app and inside generated manuals/test documents.
 
 ## Product Brief Mode
 
-`product_brief` creates a compact Chargebyte-style documentation sheet with board renders, key features, a technical snapshot, port/interface map, production evidence, and release gates.
+`product_brief` creates a compact Chargebyte-style documentation sheet with board renders, application notes, operational data, interface summaries, connector usage, production evidence, and release checks.
 
 See [docs/BOARD_A_V04_PRODUCT_BRIEF.md](docs/BOARD_A_V04_PRODUCT_BRIEF.md) for the Board A V0.4 example.
 

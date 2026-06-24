@@ -173,7 +173,9 @@ This local draft was generated from the supplied hardware evidence. It preserves
             f"# {title}",
             "",
             "## Introduction",
-            "Board A V0.4 is an evidence-derived EV charge-control and vehicle-interface controller concept centered on the SPC58NH92 MCU family. This brief is generated from the supplied EasyEDA package, schematic PDF, production package, and 3D PCB renders. Values not present in the source evidence are intentionally marked as confirmation items.",
+            "Board A V0.4 is an EV charge-control and vehicle-interface controller board centered on the SPC58NH92 MCU family. The design evidence shows charge inlet supervision, PLC/QCA charging communication, CAN/CAN-FD connectivity, HV feedback and switch-control paths, lock control, temperature sensing, service USB/UART, and JTAG/reset access.",
+            "",
+            "This product brief follows a datasheet style: product purpose, application, operating evidence, interfaces, connector usage, manufacturing evidence, and release checks are separated clearly. Ratings, certifications, dimensions, and environmental limits are not invented; they remain confirmation items until measured or supplied by signed source evidence.",
             "",
         ]
 
@@ -183,48 +185,71 @@ This local draft was generated from the supplied hardware evidence. It preserves
                 source = str(visual.get("source", "")).replace("\\", "/")
                 caption = visual.get("caption", "Board render")
                 sections.append(f"![{self._md_cell(caption)}]({source})")
-                sections.append(f"*{self._md_cell(caption)}*")
             sections.append("")
 
         sections.extend(
             [
-                "## Key Features",
-                "- SPC58NH92-based controller architecture with charge inlet, CAN-FD, PLC, HV feedback, interlock, lock, LED, temperature, OBC, DC/DC, and gate-driver interface evidence.",
-                "- Charge inlet signal set includes CP, PP, PE, CP switch controls, proximity feedback, lock motor control, and lock feedback.",
-                "- Vehicle and charging communication evidence includes CANH/CANL channels, VCU CAN, charge CAN, DB9-style CAN ports, and PLC/QCA charging communication signals.",
-                "- Production evidence includes Gerber/drill package metadata and a manufacturing note for impedance-controlled high-speed routing.",
+                "## Application",
+                "- EV charge-inlet controller or prototype validation board for CP, PP, PE, lock, feedback, and temperature signal paths.",
+                "- Vehicle integration board for CAN/CAN-FD communication between VCU, charger, DC/DC, and charge-control subsystems.",
+                "- Engineering bring-up platform for PLC/QCA charging communication, JTAG/reset access, USB/UART service, and HV interface validation.",
                 "",
-                "## Technical Snapshot",
-                "| Parameter | Evidence | Status |",
+                "## Key Features",
+                "- SPC58NH92 MCU-centered control architecture with board-level evidence for charge control, vehicle communication, and service access.",
+                "- Charge inlet signal coverage for CP, PP, PE, CP switch controls, proximity feedback, lock motor control, and lock feedback.",
+                "- Communication coverage for CAN-FD DB9 channels, VCU CAN, charge CAN, USB/UART service, and PLC/QCA charging communication.",
+                "- HV interface evidence for feedback channels, interlock threshold paths, low-side switch enable/PWM/gate lines, and all-closed feedback.",
+                "- Manufacturing package evidence includes Gerber/drill data plus an order note calling out high-speed impedance and PCB build preferences.",
+                "",
+                "## Operational Data",
+                "| Parameter | Evidence / Value | Release Status |",
                 "| --- | --- | --- |",
                 f"| Source package | {self._md_cell(sources)} | Supplied evidence |",
-                f"| Schematic pages | {self._md_cell(analysis.get('page_count', 0))} PDF page(s) plus EasyEDA page index | Reviewable |",
-                f"| Detected ports | {self._md_cell(len(ports))} connector candidates | Requires final mechanical labeling |",
-                "| PCB production package | Gerber/drill archive evidence detected | Requires signed stackup and fabrication release |",
-                "| Impedance note | 90-120 ohm high-speed routing note detected | Confirm with board stackup and fab constraints |",
+                "| Controller family | SPC58NH92 evidence visible in supplied project name/schematic context | Confirm exact fitted part and firmware target |",
+                "| Supply ratings | Power nets and converter interfaces detected, but no signed input range supplied | Measure and publish only after bench validation |",
+                "| Operating temperature | Not supplied in evidence | Define from component ratings, enclosure, and thermal test |",
+                "| Mechanical dimensions | 3D renders supplied, dimensional drawing not supplied | Add board outline and connector keep-out drawing |",
+                f"| Schematic evidence | {self._md_cell(analysis.get('page_count', 0))} PDF page(s) plus EasyEDA page index | Reviewable |",
+                f"| Detected ports | {self._md_cell(len(ports))} connector candidates | Final labels and mating parts required |",
+                "| PCB production package | Gerber/drill archive evidence detected | Requires signed stackup, drill table, and fabrication release |",
+                "| High-speed routing | 90-120 ohm impedance note detected for high-speed lines | Confirm stackup, tolerance, and coupon result with fab |",
+                "",
+                "## Interfaces",
+                "| Interface Area | Ports / Evidence | Use In Product | Confirmation Needed |",
+                "| --- | --- | --- | --- |",
+                "| Charge inlet | U187, U188, U184, CP/PP/PE, CP switch, proximity, lock feedback | Connects inlet state and lock/control signals to the MCU domain | Pinout, polarity, lock motor current, and inlet harness label |",
+                "| Vehicle and charger CAN | U22, U17, U19, VCU_CAN, CHARGE_CAN, CANH/CANL | Links the board to VCU, charger, and external CAN tools | Termination, baud rate, transceiver supply, and message ownership |",
+                "| PLC / charging communication | CN34, PLC, CP_PLC, QCA/SPI signals | Provides PLC-related charging communication evidence | Coupling network, isolation policy, SPI timing, and EMC review |",
+                "| HV feedback and interlock | P6/P7, MCU_HV_FB, VTH_IL, HVSW feedback lines | Monitors HV path state and interlock thresholds | Scaling, thresholds, isolation boundary, and fault reaction |",
+                "| Switch and power-converter control | P8/P9, AFEJ1, DCDCJ1 | Provides OBC/DC/DC/gate-drive control and feedback paths | Gate-drive limits, PWM ownership, current sense scaling, and safe state |",
+                "| Service and programming | USB1, CN1, RESET, JTAG signals | Supports firmware load, service UART, and board bring-up | Debug voltage level, protection, boot mode, and production access policy |",
                 "",
             ]
         )
 
         if ports:
+            port_limit = 12
             sections.extend(
                 [
-                    "## Port And Interface Map",
-                    "| Port | What It Is | Key Signals / Pins | Connector Evidence | Source Page |",
+                    "## Connector Overview",
+                    "| Port | Interface / Purpose | Important Signals | How It Is Used | Source Page |",
                     "| --- | --- | --- | --- | --- |",
                 ]
             )
-            for port in ports[:14]:
+            for port in ports[:port_limit]:
                 sections.append(
-                    f"| {self._md_cell(port.get('port'))} | {self._md_cell(port.get('function'))} | {self._md_cell(port.get('key_signals'))} | {self._md_cell(port.get('connector'))} | {self._md_cell(port.get('source_page'))} |"
+                    f"| {self._md_cell(port.get('port'))} | {self._md_cell(port.get('function'))} | {self._md_cell(port.get('key_signals'))} | {self._md_cell(self._product_port_usage(port))} | {self._md_cell(port.get('source_page'))} |"
                 )
-            if len(ports) > 14:
-                sections.append(f"| Additional connector candidates | {len(ports) - 14} more entries detected | Full connector appendix can be generated from EasyEDA source evidence. | Evidence retained by tool | EasyEDA package |")
+            if len(ports) > port_limit:
+                sections.append(f"| Additional connector candidates | {len(ports) - port_limit} more entries detected | Full connector appendix can be generated from EasyEDA source evidence. | Keep as engineering appendix until final product labels are frozen. | EasyEDA package |")
             sections.append("")
 
         sections.extend(
             [
-                "## Manufacturing And Release Notes",
+                "## Functional Description",
+                "During use, the MCU domain reads inlet-related CP, PP, PE, proximity, lock, temperature, HV feedback, and interlock-related signals while coordinating communication through CAN/CAN-FD and PLC-related interfaces. The OBC, DC/DC, and switch-control connectors provide the board-level hooks for charger and power-path coordination. USB/UART and JTAG/reset remain service and development interfaces and should be treated as controlled access points in a production enclosure.",
+                "",
+                "## Manufacturing And Qualification Notes",
                 "| Area | Extracted Evidence | Required Confirmation |",
                 "| --- | --- | --- |",
             ]
@@ -245,11 +270,12 @@ This local draft was generated from the supplied hardware evidence. It preserves
         sections.extend(
             [
                 "",
-                "## Validation Gates",
-                "- Confirm every external connector label against the enclosure/front-panel artwork before release.",
-                "- Run native schematic ERC and PCB DRC in EasyEDA or exported CAD before calling the design release-ready.",
-                "- Bench-check CP/PP/PE behavior, CAN termination, PLC coupling, lock motor polarity, HV feedback scaling, interlock thresholds, temperature ADC scaling, and reset/JTAG access.",
-                "- Attach measured voltage, current, thermal, isolation, and communication logs to the next documentation run so the report can become release-grade.",
+                "## Release Checklist",
+                "- Confirm every external connector label against enclosure/front-panel artwork and harness drawings.",
+                "- Run native schematic ERC and PCB DRC in EasyEDA or exported CAD before marking the design release-ready.",
+                "- Bench-check CP/PP/PE behavior, CAN termination, PLC coupling, lock motor polarity, HV feedback scaling, interlock thresholds, temperature ADC scaling, USB/UART service, and JTAG/reset access.",
+                "- Add measured voltage, current, thermal, isolation, communication, and fault-reaction logs to the next documentation run.",
+                "- Publish electrical limits, environmental limits, connector mating information, and compliance claims only after source evidence is attached.",
             ]
         )
         return "\n".join(sections)
@@ -272,17 +298,17 @@ This local draft was generated from the supplied hardware evidence. It preserves
             "USB1": 0,
             "CN1": 1,
             "CN34": 2,
-            "U22": 3,
-            "U17": 4,
-            "U19": 5,
-            "U187": 6,
-            "U188": 7,
-            "U189": 8,
-            "U184": 9,
-            "P6": 10,
-            "P8": 11,
-            "AFEJ1": 12,
-            "DCDCJ1": 13,
+            "U187": 3,
+            "U188": 4,
+            "U189": 5,
+            "P6": 6,
+            "P8": 7,
+            "AFEJ1": 8,
+            "DCDCJ1": 9,
+            "U22": 10,
+            "U17": 11,
+            "U19": 12,
+            "U184": 13,
             "CN2": 14,
             "P7": 15,
             "P9": 16,
@@ -311,6 +337,32 @@ This local draft was generated from the supplied hardware evidence. It preserves
             seen.add(ref)
             deduped.append(port)
         return deduped
+
+    @staticmethod
+    def _product_port_usage(port: dict[str, Any]) -> str:
+        ref = str(port.get("port", "")).upper()
+        function = str(port.get("function", "")).lower()
+        if ref == "CN1" or "jtag" in function:
+            return "Firmware loading, reset verification, and controlled engineering debug access."
+        if ref == "USB1" or "usb" in function:
+            return "Service connection for USB/UART bring-up, logs, and bench communication."
+        if ref == "CN34" or "plc" in function:
+            return "PLC/QCA communication path associated with charge communication evidence."
+        if ref in {"U22", "U17", "U19"} or "can" in function:
+            return "CAN/CAN-FD connection for vehicle, charger, or diagnostic network testing."
+        if ref in {"U187", "U188", "U184"} or "inlet" in function:
+            return "Charge inlet and vehicle-interface breakout for CP, PP, PE, lock, and feedback signals."
+        if ref in {"U189", "U193", "U194"} or "temperature" in function:
+            return "Temperature-sense input path; validate ADC scaling and sensor wiring before release."
+        if ref in {"P6", "P7"} or "feedback" in function or "interlock" in function:
+            return "HV feedback and interlock threshold interface; validate scaling and safe-state behavior."
+        if ref in {"P8", "P9"} or "switch" in function or "gate" in function:
+            return "HV low-side switch or gate-control path; validate drive limits and fault handling."
+        if ref.startswith("AFE"):
+            return "On-board charger or AFE control path; confirm PWM, sensing, and supply rails."
+        if ref.startswith("DCDC"):
+            return "DC/DC converter control and feedback path; confirm PWM, current sense, and fault lines."
+        return "Connector candidate; confirm pinout, voltage level, mating connector, and product label."
 
     @staticmethod
     def _format_manifest_sections(
